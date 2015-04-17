@@ -1,0 +1,11 @@
+/**
+ * Styles for the tooltips.
+ *
+ * @author Eyes <eyes@aeongarden.com>
+ * @copyright Copyright � 2015 Eyes
+ * @license http://www.gnu.org/copyleft/gpl.html GNU General Public License 2.0 or later
+ */
+
+.to_tooltip {
+  font-size: 0.875em;
+}
