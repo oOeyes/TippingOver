@@ -1,5 +1,4 @@
 <?php
-
 /**
  * An extension allowing editors to create tooltips for wiki links using either wiki pages or uploaded images.
  *
@@ -13,16 +12,15 @@
  */
 
 // If this is run directly from the web die as this is not a valid entry point.
-if( !defined( 'MEDIAWIKI' ) ) {
-  die( 'Invalid entry point.' );
+if ( !defined( 'MEDIAWIKI' ) ) {
+    echo "This is a MediaWiki extension and cannot run standalone.\n";
+    die( -1 );
 }
 
 // Extension credits.
 $wgExtensionCredits[ 'other' ][] = array(
   'name'           => 'TippingOver',
-  'url'            => 'http://sw,aeongarden.com/wiki/TippingOver', 
-  'description'    => 'An extension allowing editors to create tooltips for wiki links using either wiki pages or ' .
-                      'uploaded images.',
+  'url'            => 'http://sw.aeongarden.com/wiki/TippingOver',
   'descriptionmsg' => 'tippingover-desc',
   'author'         => '[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]',
   'version'        => '0.5',
