@@ -330,10 +330,12 @@ class WikiTooltips {
    * @param string $html Returns the page content parsed to HTML or null.
    * @param bool $doPreload Returns true if the tooltip show use preload logic or false otherwise.
    */
-  private function parseTooltip( $titleText, $out, &$html, &$doPreload ) {
+  private function parseTooltip( $titleText, &$html, &$doPreload ) {
+    global $wgParser;
+    
     if ( $titleText !== null && trim( $titleText ) !== '' ) {
       $title = Title::newFromText( $titleText );
-      $html = $out->parse( self::getTooltipWikiText( $title ) );
+      $html = $wgParser->recursiveTagParse( self::getTooltipWikiText( $title ) );
       $doPreload = ( $title->getNamespace() === NS_FILE );
       if ( trim( $html ) === '' ) {
         $html = null;
@@ -359,21 +361,16 @@ class WikiTooltips {
     global $wgtoLoadingTooltip, $wgtoMissingPageTooltip, $wgtoEmptyPageNameTooltip;
     global $wgtoPageTitleParse, $wgtoAssumeNonemptyPageTitle, $wgtoExistsCheck, $wgtoCategoryFiltering;
     
-    $out = RequestContext::getMain()->getOutput();
-    
     $this->parseTooltip( $wgtoLoadingTooltip, 
-                         $out, 
                          $this->mLoadingTooltipHtml, 
                          $this->mPreloadLoadingTooltip 
                        );
     $this->parseTooltip( $wgtoMissingPageTooltip, 
-                         $out, 
                          $this->mMissingPageTooltipHtml, 
                          $this->mPreloadMissingPageTooltip 
                        );
     if ( !$wgtoAssumeNonemptyPageTitle ) {
-      $this->parseTooltip( $wgtoEmptyPageNameTooltip, 
-                           $out, 
+      $this->parseTooltip( $wgtoEmptyPageNameTooltip,
                            $this->mEmptyPageNameTooltipHtml, 
                            $this->mPreloadEmptyPageNameTooltip 
                          );
