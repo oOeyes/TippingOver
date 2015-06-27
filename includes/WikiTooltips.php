@@ -27,6 +27,18 @@ class WikiTooltips {
   private static $mInstance = null;
   
   /**
+   * Holds a parser instance
+   * @var Parser
+   */
+  private $mParser = null;
+  
+  /**
+   * Holds the parser options
+   * @var ParserOptions
+   */
+  private $mParserOptions = null;
+  
+  /**
    * Creates the singleton instance if it doesn't exist and returns it either way.
    * @return WikiTooltips The singleton instance.
    */
@@ -323,19 +335,42 @@ class WikiTooltips {
   }
   
   /**
+   * Gets a Parser and ParserOptions instance by cloning the main parser, using the same approach as MediaWiki's
+   * internal messages API.
+   * @global Parser $wgParser The main parser object.
+   * @global Array $wgParserConf The main parser configuration.
+   */
+  private function initializeParser() {
+    global $wgParser, $wgParserConf;
+    
+    if ( $this->mParser === null && isset( $wgParser ) ) {
+      $wgParser->firstCallInit();
+      $class = $wgParserConf['class'];
+      if ( $class == 'ParserDiffTest' ) {
+        $this->mParser = new $class( $wgParserConf );
+      } else {
+        $this->mParser = clone $wgParser;
+      }
+    }
+    
+    if ( $this->mParserOptions === null ) {
+      $this->mParserOptions = new ParserOptions;
+      $this->mParserOptions->setEditSection( false );
+    }
+  }
+  
+  /**
    * Parses the content of the given page name to HTML, or returns null if the given page name is null, does not exist,
    * is in some way invalid, or parses just to whitespace.
    * @param string $titleText The title in string form.
-   * @param OutputPage $out An OutputPage instance, needed to access the parser.
    * @param string $html Returns the page content parsed to HTML or null.
    * @param bool $doPreload Returns true if the tooltip show use preload logic or false otherwise.
    */
   private function parseTooltip( $titleText, &$html, &$doPreload ) {
-    global $wgParser;
-    
-    if ( $titleText !== null && trim( $titleText ) !== '' ) {
+    if ( $this->mParser !== null && $titleText !== null && trim( $titleText ) !== '' ) {
       $title = Title::newFromText( $titleText );
-      $html = $wgParser->recursiveTagParse( self::getTooltipWikiText( $title ) );
+      $out = $this->mParser->parse( self::getTooltipWikiText( $title ), $title, $this->mParserOptions, true );
+      $html = $out->getText();
       $doPreload = ( $title->getNamespace() === NS_FILE );
       if ( trim( $html ) === '' ) {
         $html = null;
@@ -361,6 +396,7 @@ class WikiTooltips {
     global $wgtoLoadingTooltip, $wgtoMissingPageTooltip, $wgtoEmptyPageNameTooltip;
     global $wgtoPageTitleParse, $wgtoAssumeNonemptyPageTitle, $wgtoExistsCheck, $wgtoCategoryFiltering;
     
+    $this->initializeParser();
     $this->parseTooltip( $wgtoLoadingTooltip, 
                          $this->mLoadingTooltipHtml, 
                          $this->mPreloadLoadingTooltip 
