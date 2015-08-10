@@ -242,7 +242,7 @@ class WikiTooltips {
     $max = count( $this->mCategoryFilterLookup ) - 1;
     
     while ( $min <= $max ) {
-      $mid = ( $min + $max ) / 2;
+      $mid = intval( ( $min + $max ) / 2 );
       $midId = $this->mCategoryFilterLookup[$mid];
       
       if ( $midId === $id ) {

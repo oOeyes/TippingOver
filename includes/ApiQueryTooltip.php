@@ -205,6 +205,6 @@ class APIQueryTooltip extends APIBase {
    * @return string A version string.
    */
   public function getVersion( ) {
-    return __CLASS__ . ': TippingOver 0.52';
+    return __CLASS__ . ': TippingOver 0.53';
   }
 }
