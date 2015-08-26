@@ -238,6 +238,7 @@ class WikiTooltips {
    * @return bool True if the id was found, false if not.
    */
   private function isInCategoryLookup( $id ) {
+    $id = intval( $id );
     $min = 0;
     $max = count( $this->mCategoryFilterLookup ) - 1;
     
