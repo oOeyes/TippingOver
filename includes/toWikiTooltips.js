@@ -424,6 +424,7 @@ var toWikiTooltips = toWikiTooltips || {
     var tooltipData = tooltipBox.data( );
     tooltipData.toShowWhenLoaded = true;
     if ( toWikiTooltips.config.loadingTooltip !== null ) {
+      tooltipData.toIsImage = ( toWikiTooltips.config.preloadLoadingTooltip ? 'true' : 'false' );
       if ( 'toTargetTitle' in tooltipData ) {
         tooltipBox.html( toWikiTooltips.config.loadingTooltip.replace( /\$1/g, tooltipData.toTargetTitle ) );
       } else {

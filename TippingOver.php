@@ -23,7 +23,7 @@ $wgExtensionCredits[ 'other' ][] = array(
   'url'            => 'http://sw.aeongarden.com/wiki/TippingOver',
   'descriptionmsg' => 'tippingover-desc',
   'author'         => '[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]',
-  'version'        => '0.53',
+  'version'        => '0.6',
 );
 
 /**
@@ -316,11 +316,13 @@ if ( !isset( $wgtoDisablingCategory ) ) {
  * Perform setup tasks.
 */
 $wgMessagesDirs['tippingover'] = dirname ( __FILE__ ) . '/i18n';
+$wgExtensionMessagesFiles['TippingOverMagic'] = dirname( __FILE__ ) . '/TippingOver.i18n.php';
 
 $wgAutoloadClasses['WikiTooltips'] = dirname( __FILE__ ) . '/includes/WikiTooltips.php';
 $wgAutoloadClasses['ApiQueryTooltip'] = dirname( __FILE__ ) . '/includes/ApiQueryTooltip.php';
 
 $wgHooks['BeforeInitialize'][] = Array( WikiTooltips::getInstance(), 'initializeHooksAndModule' );
+$wgHooks['ParserFirstCallInit'][] = Array( WikiTooltips::getInstance(), 'initializeParserHooks' );
 
 $wgAPIModules['tooltip'] = "ApiQueryTooltip";
 

@@ -69,13 +69,19 @@ class WikiTooltips {
    * redundant checks of this state, but due to time issues, this is the solution for now.
    * @var bool
    */
-  private $mIsLinkProcessingInitialized = false;
+  private $mIsFullyInitialized = false;
   
   /**
    * The parsed HTML for the loading tooltip, or null if this is disabled somehow.
    * @var String
    */
   private $mLoadingTooltipHtml;
+  
+  /**
+   * True if tooltips are enabled in this namespace.
+   * @var String
+   */
+  private $mTooltipsEnabledHere = false;
   
   /**
    * Indicates if the loading tooltip should be preloaded.
@@ -137,11 +143,25 @@ class WikiTooltips {
     if ( array_key_exists( $title->getNamespace(), $wgtoEnableInNamespaces ) && 
          $wgtoEnableInNamespaces[$title->getNamespace()] === true
        ) {
+      $this->mTooltipsEnabledHere = true;
       $wgHooks['MakeGlobalVariablesScript'][] = Array( $this, 'registerParsedConfigVarsForScriptExport' );
-      $wgHooks['LinkEnd'][] = Array( $this, 'checkAndAttachTooltip' );
+      $wgHooks['LinkEnd'][] = Array( $this, 'linkTooltipRender' );
       
       $output->addModules( 'ext.TippingOver.wikiTooltips' );
     }
+  }
+  
+    /**
+   * Calls all parser function registrations functions.
+   * @param Parser $parser The parser object being initialized.
+   * @return bool true to indicate no problems.
+   */
+  static public function initializeParserHooks( &$parser ) {
+    $parser->setFunctionHook( 'tipfor', 
+                              Array( self::getInstance(), 'tipforRender' ), 
+                              SFH_OBJECT_ARGS 
+                            );
+    return true;
   }
   
   /**
@@ -439,17 +459,18 @@ class WikiTooltips {
       $this->populateLookup();
     }
     
-    $this->mIsLinkProcessingInitialized = true;
+    $this->mIsFullyInitialized = true;
   }
   
   /**
    * This function performs the server-side checks enabled by the current configuration to determine if a given link
-   * does not have a tooltip and returns null. Otherwise, it returns an array of information needed for both displaying
-   * the tooltip client-side and running any further checks there to see if a tooltip is available for the link.
+   * does not have a tooltip and returns null if not. Otherwise, it returns an array of information needed for both 
+   * displaying the tooltip client-side and running any further checks there to see if a tooltip is available for the 
+   * link.
    * @global Array $wgtoNamespacesWithTooltips What namespaces have tooltips enabled for links into them.
    * @global int $wgtoPageTitleParse When to do the parsing of the target title into the tooltip title page.
    * @global int $wgtoExistsCheck Whether and when to do a check to see if the tooltip page exists.
-   * @param Title $target The target page of the link.
+   * @param Title $target The target page of the link or tooltip span.
    * @return Array null if the link should not have a tooltip, or an array of information if it might get one.
    */
   private function runEarlyTooltipChecks( $target ) {
@@ -463,7 +484,12 @@ class WikiTooltips {
       $setupInfo = Array();
       
       if ( $wgtoPageTitleParse === TO_RUN_EARLY ) {
-        $tooltipTitleText = wfMessage( 'to-tooltip-page-name' )->params( $target->getPrefixedText() )->parse();
+        // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute
+        // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
+        $tooltipTitleWikitext = wfMessage( 'to-tooltip-page-name' )->params( $target->getPrefixedText() )->plain();
+        $messageTitle = Title::newFromText( 'MediaWiki:To-tooltip-page-name' );
+        $tooltipTitleParse = $this->mParser->parse( $tooltipTitleWikitext, $messageTitle, $this->mParserOptions, true );
+        $tooltipTitleText = Parser::stripOuterParagraph( $tooltipTitleParse->getText() );
         if ( trim( $tooltipTitleText ) !== "" ) {
           $tooltipTitle = Title::newFromText( $tooltipTitleText );
           if ( $tooltipTitle !== null ) {
@@ -500,6 +526,59 @@ class WikiTooltips {
   }
   
   /**
+   * Given an array of setup information from runEarlyTooltipChecks(), this adds appropriate HTML attibures as 
+   * name/value pairs to the second given array, which should either be an empty array or an array of existing HTML
+   * attributes that should be added to the final tag.
+   * @param Array $setupInfo Setup information from runEarlyTooltipChecks().
+   * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
+   */
+  private function setUpAttribs( $target, $setupInfo, &$attribs ) {
+    $tooltipId = $this->encodeAllSpecial( $target->getPrefixedText() );
+    if ( array_key_exists( 'class', $attribs ) ) {
+      $attribs['class'] .= ' to_hasTooltip';
+    } else {
+      $attribs['class'] = 'to_hasTooltip';
+    }
+    $attribs['data-to-id'] = $tooltipId;
+    $attribs['data-to-target-title'] = $target->getPrefixedText();
+    if ( $setupInfo['tooltipTitle'] !== null ) {
+      $attribs['data-to-tooltip-title'] = $setupInfo['tooltipTitle'];
+    }
+    if ( array_key_exists( 'isImage', $setupInfo ) ) {
+      $attribs['data-to-is-image'] = $setupInfo['isImage'] ? 'true' : 'false';
+    }
+    if ( array_key_exists( 'emptyPageName', $setupInfo ) ) {
+      $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
+    } else if ( array_key_exists( 'missingPage', $setupInfo ) ) {
+      $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
+    }
+  }
+  
+  /**
+   * This function performs the server-side checks enabled by the current configuration to determine if a given target
+   * does not have a tooltip and returns false if not. Otherwise, this adds appropriate HTML attributes as name/value 
+   * pairs to the second given array, which should either be an empty array or an array of existing HTML attributes that 
+   * should be added to the final tag, and also returns true.
+   * @param Title $target The target page of the link or tooltip span.
+   * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
+   * @return bool True if there is a tooltip and tooltip attribtues have been added
+   */
+  private function maybeAttachTooltip( $target, &$attribs ) {
+    if ( $target !== null ) {
+      $setupInfo = $this->runEarlyTooltipChecks( $target );
+
+      if ( $setupInfo !== null ) {
+        $this->setUpAttribs( $target, $setupInfo, $attribs );
+        return true;
+      } else {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  
+  /**
    * Attached to the LinkEnd hook of the MediaWiki linker, this function will add appropriate data elements and other
    * attributes to any link that should have or might have a tooltip, preparing it for the client-side script to
    * finish the job.
@@ -510,40 +589,60 @@ class WikiTooltips {
    * @param Array $attribs The attributes of the <a> tag and their values.
    * @param string $ret Alternate HTML to return rather than the <a> tag the linker would generate.
    */
-  public function checkAndAttachTooltip( $dummy, $target, $options, &$html, &$attribs, &$ret ) {   
-    if ( !$this->mIsLinkProcessingInitialized ) {
+  public function linkTooltipRender( $dummy, $target, $options, &$html, &$attribs, &$ret ) {   
+    if ( !$this->mIsFullyInitialized ) {
       $this->performDelayedInitialization();
     }
     
-    if ( $target !== null ) {
-      $setupInfo = $this->runEarlyTooltipChecks( $target );
+    $this->maybeAttachTooltip( $target, $attribs );
+    
+    return true;
+  }
 
-      if ( $setupInfo !== null ) {
-        $tooltipId = $this->encodeAllSpecial( $target->getPrefixedText() );
-        if ( array_key_exists( 'class', $attribs ) ) {
-          $attribs['class'] .= ' to_hasTooltip';
-        } else {
-          $attribs['class'] = 'to_hasTooltip';
-        }
-        $attribs['data-to-id'] = $tooltipId;
-        $attribs['data-to-target-title'] = $target->getPrefixedText();
-        if ( $setupInfo['tooltipTitle'] !== null ) {
-          $attribs['data-to-tooltip-title'] = $setupInfo['tooltipTitle'];
-        }
-        if ( array_key_exists( 'isImage', $setupInfo ) ) {
-          $attribs['data-to-is-image'] = $setupInfo['isImage'] ? 'true' : 'false';
-        }
-        if ( array_key_exists( 'emptyPageName', $setupInfo ) ) {
-          $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
-        } else if ( array_key_exists( 'missingPage', $setupInfo ) ) {
-          $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
-        }
-        $html = $html; // for some reason, this is solving a problem with the added attribs not appearing
-                       // I have no idea why this works. I think the original problem was probably with a cache,
-                       // but it's harmless even if stupid, so leaving it in for now.
+  /**
+   * The function handles the #tipfor function. If tooltips are enabled in the current namespace this function will 
+   * output text into a span and add appropriate data elements and other attributes to that span if it should have or 
+   * might have a tooltip, preparing it for the client-side script to finish the job. If tooltips are not enabled in
+   * the current namespace, it will simply output the appropriate text.
+   * @param Parser $parser The parser object. Ignored.
+   * @param PPFrame $frame The parser frame object.
+   * @param Array $params The parameters and values together, not yet expanded or trimmed.
+   * @return Array The function output along with relevant parser options.
+   */
+  public function tipforRender( $parser, $frame, $params ) {
+    if ( !$this->mIsFullyInitialized ) {
+      $this->performDelayedInitialization();
+    }
+    
+    $targetTitleText = "";
+    $targetTitle = null;
+    if ( isset( $params[0] ) ) {
+      $targetTitleText = trim( $frame->expand( $params[0] ) );
+      if ( $this->mTooltipsEnabledHere ) {
+        $targetTitle = Title::newFromText( $targetTitleText );
       }
     }
     
-    return true;
+    $displayText = "";
+    if ( isset( $params[1] ) ) {
+      $displayText = trim( $frame->expand( $params[1] ) );
+    } 
+    
+    if ( $displayText === "" ) {
+      $displayText = $targetTitleText;
+      if ( isset( $params[2] ) ) {
+        $displayText .= trim( $frame->expand( $params[2] ) );
+      }
+    }
+    
+    $output = $displayText;
+    if ( $targetTitle !== null ) {
+      $attribs = Array();
+      if ( $this->maybeAttachTooltip( $targetTitle, $attribs ) ) {
+        $output = Xml::element( 'span', $attribs, $displayText, false );
+      }
+    }
+    
+    return Array( $output, 'noparse' => false );
   }
 }

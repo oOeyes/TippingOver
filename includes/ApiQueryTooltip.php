@@ -13,6 +13,22 @@
 class APIQueryTooltip extends APIBase {
   
   /**
+   * Holds the parser options
+   * @var ParserOptions
+   */
+  private $mParserOptions = null;
+  
+  /**
+   * Initializes a ParserOptions instance.
+   */
+  private function initializeParserOptions() {
+    if ( $this->mParserOptions === null ) {
+      $this->mParserOptions = new ParserOptions;
+      $this->mParserOptions->setEditSection( false );
+    }
+  }
+  
+  /**
    * Gets the options requested in the options param into an array form, or errors out the request if the options
    * are invalid.
    * @return Array An array with the available option keywords as keys and true or false as values.
@@ -42,39 +58,53 @@ class APIQueryTooltip extends APIBase {
    * the title supplied in the target parameter, but only if the options specified actually require knowing the
    * tooltip page title; otherwise, it skips that step and returns null. It also returns null if the target title
    * cannot be resolved.
-   * @param $existsOption true if we need to return whether or not the tooltip page exists.
-   * @param $imageOption true if we need to return whether or not the tooltip page is an image.
-   * @param $textOption true if we need to return the tooltip page content parsed to HTML.
+   * @param $options Array of options, indexed by name and true for requested options.
    * @return string The tooltip page title in string form, or null if not needed or on errors.
    */
-  private function getTooltipTitleText( $existsOption, $imageOption, $textOption ) {
+  private function getTooltipTitleText( $options ) {
     if ( isset( $this->params['tooltip'] ) ) {
       return $this->params['tooltip'];
     }
-    if ( isset( $this->params['target'] ) ) {
-      $targetTitle = Title::newFromText( $this->params['target'] );
-      if ( $targetTitle !== null && ( $existsOption || $imageOption || $textOption ) ) {
-        return wfMessage( 'to-tooltip-page-name' )->params( $targetTitle->getPrefixedText() )->parse();
+    if ( $options['exists'] || $options['image'] || $options['text'] || $options['title'] ) {
+      if ( isset( $this->params['target'] ) ) {
+        $targetTitle = Title::newFromText( $this->params['target'] );
+        if ( $targetTitle !== null ) {
+          // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute.
+          // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
+          $tooltipTitleCode = wfMessage( 'to-tooltip-page-name' )->params( $targetTitle->getPrefixedText() )->plain();
+          return Parser::stripOuterParagraph( $this->parse( $tooltipTitleCode, 
+                                                            Title::newFromText( 'MediaWiki:To-tooltip-page-name' ) 
+                                                          ) 
+                                            );
+        } else {
+          return null;
+        }
       } else {
         return null;
       }
-    } else {
-      return null;
     }
   }
   
   /**
    * Runs the parser to get the fully parsed content for a tooltip to return.
-   * @global Parser $wgParser The MediaWiki parser.
    * @param Title $tooltipTitle The title of the tooltip to get content from.
    * @return string The tooltip content parsed to HTML.
    */
-  private function getParsedText( $tooltipTitle ) {
+  private function parseTooltip( $tooltipTitle ) {
+    return $this->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle ), $tooltipTitle );
+  }
+  
+  /**
+   * Parses the supplied wikitext.
+   * @global Parser $wgParser The MediaWiki parser.
+   * @param string $wikitext The text to parse.
+   * @param Title $title The title to supply for the parser.
+   * @return string The wikitext parsed to HTML.
+   */
+  private function parse( $wikitext, $title ) {
     global $wgParser;
     
-    $parserOptions = new ParserOptions();
-    $parserOptions->setEditSection( false );
-    $output = $wgParser->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle  ), $tooltipTitle, $parserOptions );
+    $output = $wgParser->parse( $wikitext, $title, $this->mParserOptions );
     return $output->getText();
   }
   
@@ -113,7 +143,7 @@ class APIQueryTooltip extends APIBase {
       }
     }
     
-    $tooltipTitleText = $this->getTooltipTitleText( $options['exists'], $options['image'], $options['text'] );
+    $tooltipTitleText = $this->getTooltipTitleText( $options );
     if ( $tooltipTitleText !== null && trim( $tooltipTitleText ) !== '' ) {
       $tooltipTitle = Title::newFromText( $tooltipTitleText );
       if ( $tooltipTitle !== null ) {
@@ -128,7 +158,7 @@ class APIQueryTooltip extends APIBase {
             $result->addValue( null, 'exists', 'true' );
           }
           if ( $options['text'] ) {
-            $result->addValue( 'text', '*', $this->getParsedText( $tooltipTitle ) );
+            $result->addValue( 'text', '*', $this->parseTooltip( $tooltipTitle ) );
           }
         } else if ( $options['exists'] ) {
           $result->addValue( null, 'exists', 'false' );
@@ -145,6 +175,8 @@ class APIQueryTooltip extends APIBase {
   public function execute( ) {
     $this->params = $this->extractRequestParams();
     $this->requireAtLeastOneParameter( $this->params, 'target', 'tooltip' );
+    
+    $this->initializeParserOptions();
     
     $this->addResults( $this->getOptions() );
     
@@ -205,6 +237,6 @@ class APIQueryTooltip extends APIBase {
    * @return string A version string.
    */
   public function getVersion( ) {
-    return __CLASS__ . ': TippingOver 0.53';
+    return __CLASS__ . ': TippingOver 0.6';
   }
 }
