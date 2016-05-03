@@ -23,7 +23,7 @@ $wgExtensionCredits[ 'other' ][] = array(
   'url'            => 'http://sw.aeongarden.com/wiki/TippingOver',
   'descriptionmsg' => 'tippingover-desc',
   'author'         => '[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]',
-  'version'        => '0.6',
+  'version'        => '0.61',
 );
 
 /**
@@ -154,19 +154,52 @@ if ( !isset( $wgtoEmptyPageNameTooltip ) ) {
 }
 
 /**
+ * $wgtoFollowTargetRedirects --
+ *       This defines whether TippingOver follows redirects in link or #tipfor targets and when this happens in
+ *       the tooltip process. Note that redirects from the actual tooltip page are always followed.
+ * 
+ *       Valid values are:
+ * 
+ *       TO_DISABLE : This setting means that the category filter check and page title parse will operate on the exact
+ *           page specified as a link or #tipfor target, even if it's a redirect. This should run faster, though it
+ *           may only be noticable on link-heavy pages, but it means that if category filtering is used in enabling 
+ *           mode, the redirect pages themselves will have to be in the enabling category of one of its subcategories,
+ *           and the page title parse will also process the redirect page title, so redirects in the tooltip pages may
+ *           also be necessary.
+ *           
+ *       TO_RUN_EARLY : This follows any redirects in link or #tipfor targets before category filtering or page title 
+ *           parsing occurs, regardless of if they are performed early or late. It only follows redirects one level; it 
+ *           won't follow double redirects to the end. This is done on a page when it is saved or otherwise regenerated 
+ *           by the wiki, so it's possible for it to fall out of sync if a redirect is changed. This adds some small
+ *           overhead to each link because of the redirect check, which may slow down saves of long, link-heavy pages.
+ * 
+ *       TO_RUN_LATE : THIS IS NOT YET IMPLEMENTED. This setting is currently the same as TO_DISABLE
+ * 
+ *           When it's implemented:
+ *           This follows any redirects in link or #tipfor targets when the user hovers over an enabled link.
+ *           Thus, if category filtering is done early as in TO_PREQUERY or TO_RUN_EARLY modes, the check will be done
+ *           on the specified page title and not what it redirects to. Additionally, if page title parsing is in
+ *           TO_RUN_EARLY mode, the page title it receives will also be the one specified in the link, not any page
+ *           it redirects to.
+ */
+if ( !isset( $wgtoFollowTargetRedirects ) ) {
+  $wgtoFollowTargetRedirects = TO_RUN_EARLY;
+}
+
+/**
  * $wgtoPageTitleParse --
  *       This defines when the title of a link's target should be sent to MediaWiki:To-tooltip-page-name to parse the
  *       appropriate title for the tooltip page.
  * 
  *       Valid values are:
  * 
- *       TO_DO_EARLY : This performs the parse while the page is loading, saving some processing when actually
+ *       TO_RUN_EARLY : This performs the parse while the page is loading, saving some processing when actually
  *           loading tooltips at the expense of adding some extra processing for links during the page load. How much
  *           of an impact this will have will depend a lot on the logic in MediaWiki:To-tooltip-page-name.
  *           Expensive processing in that function could present a danger of causing link-heavy pages to time out, or
  *           at least load very slowly, but there are tradeoffs to doing the check late.
  * 
- *       TO_DO_LATE : This performs the parse after the user movses over a link during the actual tooltip load.
+ *       TO_RUN_LATE : This performs the parse after the user movses over a link during the actual tooltip load.
  *           This may be a good idea if MediaWiki:To-tooltip-page-name contains expensive logic, pages are particularly 
  *           link heavy, and/or category filtering isn't an option or doesn't significantly reduce the number of links
  *           to check.
@@ -221,13 +254,13 @@ if ( !isset( $wgtoAssumeNonemptyPageTitle ) ) {
  *           the loading tooltip only to have it disappear, as this effectively disables $wgMissingPageTooltip as
  *           well.
  * 
- *       TO_DO_EARLY : This performs the exists check while the page is loading, saving some processing when actually
+ *       TO_RUN_EARLY : This performs the exists check while the page is loading, saving some processing when actually
  *           loading tooltips at the expense of adding some extra processing for links during the page load.
  * 
  *           Nore that if $wgtoPageTitleParse is set to TO_RUN_LATE, this is the same as disabling the exists check 
  *           because the tooltip title is not available to be checked during the page load.
  * 
- *       TO_DO_LATE : This performs the exists check after the user movses over a link during the actual tooltip load.
+ *       TO_RUN_LATE : This performs the exists check after the user movses over a link during the actual tooltip load.
  *           This may be a good idea if pages are particularly link heavy and category filtering isn't an option or
  *           doesn't significantly reduce the number of links to check.
  * 
@@ -252,12 +285,12 @@ if ( !isset( $wgtoExistsCheck ) ) {
  *           lookup as each link is processed. Provided the hierarchy is not complex and the number of pages within the
  *           category structure is not excessive, this will probably perform better on most pages than TO_DO_EARLY.
  * 
- *       TO_DO_EARLY : This performs the category filtering while the page is loading as each link is processed. It
+ *       TO_RUN_EARLY : This performs the category filtering while the page is loading as each link is processed. It
  *           must check the database for every new page it encounters, though, which may noticeably slow down the
  *           loading of link-heavy pages. TO_PREQUERY or TO_DO_LATE are usually going to be better options in terms of
  *           performance.
  * 
- *       TO_DO_LATE : This performs the category filtering after the user hovers over a link. Note that in this mode,
+ *       TO_RUN_LATE : This performs the category filtering after the user hovers over a link. Note that in this mode,
  *           a request still gets sent to the server every time a user hovers over a link, even if no tooltip ends up
  *           showing up. The benefit is that category filtering will not slow down page loads in this mode.
  * 

@@ -71,7 +71,9 @@ class APIQueryTooltip extends APIBase {
         if ( $targetTitle !== null ) {
           // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute.
           // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
-          $tooltipTitleCode = wfMessage( 'to-tooltip-page-name' )->params( $targetTitle->getPrefixedText() )->plain();
+          $tooltipTitleCode = wfMessage( 'to-tooltip-page-name' )->inContentLanguage()
+                                                                 ->params( $targetTitle->getPrefixedText() )
+                                                                 ->plain();
           return Parser::stripOuterParagraph( $this->parse( $tooltipTitleCode, 
                                                             Title::newFromText( 'MediaWiki:To-tooltip-page-name' ) 
                                                           ) 
@@ -237,6 +239,6 @@ class APIQueryTooltip extends APIBase {
    * @return string A version string.
    */
   public function getVersion( ) {
-    return __CLASS__ . ': TippingOver 0.6';
+    return __CLASS__ . ': TippingOver 0.61';
   }
 }

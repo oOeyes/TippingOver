@@ -189,6 +189,24 @@ class WikiTooltips {
   }
   
   /**
+   * This function will check if the given page title references a redirect and returns the redirect target title if
+   * it does; otherwise, it returns the title given.
+   * @param Title $title The title to follow any redirect on.
+   * @return Title The original title if it isn't a redirect or the title of the redirect target if it is.
+   */
+  public static function followRedirect( $title ) {
+    if ( $title !== null && $title->getNamespace() !== NS_MEDIA && $title->getNamespace() > -1 ) {
+      $page = WikiPage::factory( $title );
+      $target = $page->getRedirectTarget();
+      if ( $target !== null ) {
+        return $target;
+      }
+    }
+    
+    return $title;
+  }
+  
+  /**
    * Recurvise function that assigns all page ids in the given category and its subcategories to the $mCategoryLookup
    * array, allowing for category filtering to be done without querying the database later.
    * @global Array $wgtoNamespacesWithTooltips What namespaces have tooltips enabled for links into them.
@@ -252,8 +270,7 @@ class WikiTooltips {
   }
   
   /**
-   * Performs a binary search of the category filter lookup array for the given item. Returns an array with members
-   * indicating if the item was found and the index of the last item compared.
+   * Performs a binary search of the category filter lookup array for the given item.
    * @param int $id The page id to search for.
    * @return bool True if the id was found, false if not.
    */
@@ -486,7 +503,9 @@ class WikiTooltips {
       if ( $wgtoPageTitleParse === TO_RUN_EARLY ) {
         // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute
         // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
-        $tooltipTitleWikitext = wfMessage( 'to-tooltip-page-name' )->params( $target->getPrefixedText() )->plain();
+        $tooltipTitleWikitext = wfMessage( 'to-tooltip-page-name' )->inContentLanguage()
+                                                                   ->params( $target->getPrefixedText() )
+                                                                   ->plain();
         $messageTitle = Title::newFromText( 'MediaWiki:To-tooltip-page-name' );
         $tooltipTitleParse = $this->mParser->parse( $tooltipTitleWikitext, $messageTitle, $this->mParserOptions, true );
         $tooltipTitleText = Parser::stripOuterParagraph( $tooltipTitleParse->getText() );
@@ -559,12 +578,18 @@ class WikiTooltips {
    * does not have a tooltip and returns false if not. Otherwise, this adds appropriate HTML attributes as name/value 
    * pairs to the second given array, which should either be an empty array or an array of existing HTML attributes that 
    * should be added to the final tag, and also returns true.
+   * @global int $wgtoFollowTargetRedirects The mode to use for following target redirects.
    * @param Title $target The target page of the link or tooltip span.
    * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
-   * @return bool True if there is a tooltip and tooltip attribtues have been added
+   * @return bool True if there is a tooltip and tooltip attribtues have been added.
    */
   private function maybeAttachTooltip( $target, &$attribs ) {
+    global $wgtoFollowTargetRedirects;
+    
     if ( $target !== null ) {
+      if ( $wgtoFollowTargetRedirects === TO_RUN_EARLY ) {
+        $target = self::followRedirect( $target );
+      }
       $setupInfo = $this->runEarlyTooltipChecks( $target );
 
       if ( $setupInfo !== null ) {
