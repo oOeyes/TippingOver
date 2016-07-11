@@ -90,10 +90,11 @@ class APIQueryTooltip extends APIBase {
   /**
    * Runs the parser to get the fully parsed content for a tooltip to return.
    * @param Title $tooltipTitle The title of the tooltip to get content from.
+   * @param Title $targetTitle The title of the page that owns this tooltip.
    * @return string The tooltip content parsed to HTML.
    */
-  private function parseTooltip( $tooltipTitle ) {
-    return $this->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle ), $tooltipTitle );
+  private function parseTooltip( $tooltipTitle, $targetTitle ) {
+    return $this->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle ), $targetTitle );
   }
   
   /**
@@ -119,9 +120,9 @@ class APIQueryTooltip extends APIBase {
     
     $result = $this->getResult();
     
+    $targetTitle = Title::newFromText( $this->params['target'] );
     if ( $options['cat'] ) {
       if ( $wgtoCategoryFiltering !== TO_DISABLE ) {
-        $targetTitle = Title::newFromText( $this->params['target'] );
         if ( $targetTitle !== null ) {
           $category = WikiTooltips::getFilterCategoryTitle()->getText();
           $finder = new CategoryFinder;
@@ -160,7 +161,11 @@ class APIQueryTooltip extends APIBase {
             $result->addValue( null, 'exists', 'true' );
           }
           if ( $options['text'] ) {
-            $result->addValue( 'text', '*', $this->parseTooltip( $tooltipTitle ) );
+            if ( $targetTitle !== null ) {
+              $result->addValue( 'text', '*', $this->parseTooltip( $tooltipTitle, $targetTitle ) );
+            } else {
+              $result->addValue( 'text', '*', $this->parseTooltip( $tooltipTitle, $tooltipTitle ) );
+            }
           }
         } else if ( $options['exists'] ) {
           $result->addValue( null, 'exists', 'false' );
@@ -239,6 +244,6 @@ class APIQueryTooltip extends APIBase {
    * @return string A version string.
    */
   public function getVersion( ) {
-    return __CLASS__ . ': TippingOver 0.61';
+    return __CLASS__ . ': TippingOver 0.62';
   }
 }

@@ -23,7 +23,7 @@ $wgExtensionCredits[ 'other' ][] = array(
   'url'            => 'http://sw.aeongarden.com/wiki/TippingOver',
   'descriptionmsg' => 'tippingover-desc',
   'author'         => '[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]',
-  'version'        => '0.61',
+  'version'        => '0.62',
 );
 
 /**
@@ -93,6 +93,26 @@ $wgtoNamespacesWithTooltips = array_replace( Array( NS_MAIN => true,
                                                   ),
                                              $wgtoNamespacesWithTooltips
                                            );
+
+/**
+ * $wgtoEnableOnImageLinks --
+ *       This defines whether or not tooltips are enabled on image links. In most cases, this refers to links that
+ *       would be created by something link [[File:Example.jpg|link=Example]]. It can even be possible, in certain
+ *       configurations, for the images themselves to have tooltips, so even a link like [[File:Example.jpg]] could
+ *       potentially show a tooltip if this is enabled.
+ * 
+ *       Valid values are:
+ * 
+ *       true : Tooltips are enabled on image links, so if an image links to a page with a valid tooltip, it will show 
+ *           up when hovering over the image.
+ * 
+ *       false : Tooltips are disabled on images links and won't show up even if the image links to a page with a valid
+ *           tooltip.
+ *          
+ */
+if ( !isset( $wgtoEnableOnImageLinks ) ) {
+  $wgtoEnableOnImageLinks = true;
+}
 
 /**
  * $wgtoLoadingTooltip --

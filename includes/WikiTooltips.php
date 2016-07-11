@@ -64,6 +64,18 @@ class WikiTooltips {
   private $mCategoryFilterCache = Array();
   
   /**
+   * The next index to use for image link tooltip attachment.
+   * @var int
+   */
+  private $mImageLinkNextIndex = 0;
+  
+  /**
+   * An array containing the attributes to add to image links that should have tooltips.
+   * @var Array
+   */
+  private $mImageLinkTargets = Array();
+  
+  /**
    * Indicates if we've initialized all variables needed to process links. This is a kludge as some of these need
    * access to the parser. Eventually, a better hook with parser access should be identified to avoid all the
    * redundant checks of this state, but due to time issues, this is the solution for now.
@@ -130,6 +142,7 @@ class WikiTooltips {
    * the JavaScript module if the current page is in a namespace where tooltips are enabled.
    * @global Array $wgHooks The global where hooks are registered in MediaWiki.
    * @global Array $wgtoEnableInNamespaces Which namespaces tooltips are enabled in.
+   * @global bool $wgtoEnableOnImageLinks Whether tooltips are enabled on image links.
    * @param Title $title The title being requested.
    * @param Article $article The article object. Ignored.
    * @param OutputPage $output The output page.
@@ -138,7 +151,7 @@ class WikiTooltips {
    * @param MediaWiki $mediawiki The MediaWiki object. Ignored.
    */
   public function initializeHooksAndModule( &$title, &$article, &$output, &$user, $request, $mediawiki ) {
-    global $wgHooks, $wgtoEnableInNamespaces;
+    global $wgHooks, $wgtoEnableOnImageLinks, $wgtoEnableInNamespaces;
     
     if ( array_key_exists( $title->getNamespace(), $wgtoEnableInNamespaces ) && 
          $wgtoEnableInNamespaces[$title->getNamespace()] === true
@@ -146,6 +159,10 @@ class WikiTooltips {
       $this->mTooltipsEnabledHere = true;
       $wgHooks['MakeGlobalVariablesScript'][] = Array( $this, 'registerParsedConfigVarsForScriptExport' );
       $wgHooks['LinkEnd'][] = Array( $this, 'linkTooltipRender' );
+      if ( $wgtoEnableOnImageLinks ) {
+        $wgHooks['ImageBeforeProduceHTML'][] = Array( $this, 'imageLinkTooltipStartRender' );
+        $wgHooks['ThumbnailBeforeProduceHTML'][] = Array( $this, 'imageLinkTooltipFinishRender' );
+      }
       
       $output->addModules( 'ext.TippingOver.wikiTooltips' );
     }
@@ -621,6 +638,84 @@ class WikiTooltips {
     
     $this->maybeAttachTooltip( $target, $attribs );
     
+    return true;
+  }
+  
+  public function imageLinkTooltipStartRender( &$skin, 
+                                               &$title, 
+                                               &$file, 
+                                               &$frameParams, 
+                                               &$handlerParams, 
+                                               &$time, 
+                                               &$res 
+                                             ) {
+    global $wgtoFollowTargetRedirects;
+    
+    if ( !$this->mIsFullyInitialized ) {
+      $this->performDelayedInitialization();
+    }
+    
+    if ( isset( $frameParams['link-url'] ) && $frameParams['link-url'] !== '' ) {
+      $target = null; // Target is external, so no tooltip to worry about.
+    } elseif ( isset( $frameParams['link-title'] ) && $frameParams['link-title'] !== '' ) {
+      $target = $frameParams['link-title'];
+    } elseif ( !empty( $frameParams['no-link'] ) ) {
+      $target = null; // This image won't be linked to anything, so no tooltip.
+    } else {
+      $target = $title; // Image should be linking to its own page.
+    }
+    
+    if ( $target !== null ) {
+      if ( $wgtoFollowTargetRedirects === TO_RUN_EARLY ) {
+        $target = self::followRedirect( $target );
+      }
+      
+      // This is a rather hideous hack to avoid having to scrape a link url to get the target title when it's
+      // actually possible to attach attributes to the link. Instead, while the target title is available as an actual
+      // Title, it is stored along with the results of the early checks by index. A numbered class is then added to
+      // allow the link to be identified in another hook, allowing tooltip attachment to be finished up then.
+      $this->mImageLinkTargets[$this->mImageLinkNextIndex] = $target;
+      if ( array_key_exists( 'class', $frameParams ) ) {
+        $frameParams['class'] .= ' ';
+      } else {
+        $frameParams['class'] = '';
+      }
+      $frameParams['class'] .= 'to_addTooltip_' . strval( $this->mImageLinkNextIndex );
+      ++$this->mImageLinkNextIndex;
+    }
+    
+    return true;
+  }
+  
+  public function imageLinkTooltipFinishRender( $thumbnail, &$attribs, &$linkAttribs ) {
+    if ( array_key_exists( 'class', $attribs ) ) {
+      $outClasses = Array();
+      $inClasses = explode( ' ', $attribs['class'] );
+      $index = null;
+      foreach ( $inClasses as $class ) {
+        if ( strpos( $class, 'to_addTooltip_' ) === 0 ) {
+          $index = substr( $class, 14 );
+          if ( ctype_digit( $index ) ) {
+            $index = intval( $index );
+          } else {
+            $index = null;
+            $outClasses[] = $class;
+          }
+        } else {
+          $outClasses[] = $class;
+        }
+      }
+      if ( $index !== null && array_key_exists( $index, $this->mImageLinkTargets ) ) {
+        $target = $this->mImageLinkTargets[$index];
+        $this->maybeAttachTooltip( $target, $linkAttribs );
+      }
+      if ( count( $outClasses ) > 0 ) {
+        $attribs['class'] = implode( ' ', $outClasses );
+      } else {
+        unset( $attribs['class'] );
+      }
+    }
+      
     return true;
   }
 
