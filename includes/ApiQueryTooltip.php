@@ -94,7 +94,13 @@ class APIQueryTooltip extends APIBase {
    * @return string The tooltip content parsed to HTML.
    */
   private function parseTooltip( $tooltipTitle, $targetTitle ) {
-    return $this->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle ), $targetTitle );
+    $tooltips = WikiTooltips::getInstance();
+    
+    $tooltips->beforeTooltipContentParse();
+    $output = $this->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle ), $targetTitle );
+    $tooltips->afterTooltipContentParse();
+    
+    return $output;
   }
   
   /**
@@ -244,6 +250,6 @@ class APIQueryTooltip extends APIBase {
    * @return string A version string.
    */
   public function getVersion( ) {
-    return __CLASS__ . ': TippingOver 0.62';
+    return __CLASS__ . ': TippingOver 0.63';
   }
 }

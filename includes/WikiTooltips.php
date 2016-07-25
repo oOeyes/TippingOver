@@ -84,6 +84,14 @@ class WikiTooltips {
   private $mIsFullyInitialized = false;
   
   /**
+   * Indicates if we're in the parser because we're parsing the content of a tooltip. There is no value in adding
+   * tooltips to content inside a tooltip, and it can even lead to potential fatal errors by calling the parser
+   * recursively, so when this is true, attaching tooltips to content is disabled.
+   * @var bool
+   */
+  private $mIsParsingTooltipContent = false;
+  
+  /**
    * The parsed HTML for the loading tooltip, or null if this is disabled somehow.
    * @var String
    */
@@ -415,6 +423,21 @@ class WikiTooltips {
   }
   
   /**
+   * Disables tooltip attachment until afterTooltipContentParse is called. Intended to provide a way to disable
+   * tooltip attachment when parsing the actual content of a tooltip.
+   */
+  public function beforeTooltipContentParse( ) {
+    $this->mIsParsingTooltipContent = true;
+  }
+  
+  /**
+   * Reenables tooltip attachment after beforeTooltipContentParse is called.
+   */
+  public function afterTooltipContentParse( ) {
+    $this->mIsParsingTooltipContent = false;
+  }
+  
+  /**
    * Parses the content of the given page name to HTML, or returns null if the given page name is null, does not exist,
    * is in some way invalid, or parses just to whitespace.
    * @param string $titleText The title in string form.
@@ -424,7 +447,9 @@ class WikiTooltips {
   private function parseTooltip( $titleText, &$html, &$doPreload ) {
     if ( $this->mParser !== null && $titleText !== null && trim( $titleText ) !== '' ) {
       $title = Title::newFromText( $titleText );
+      $this->beforeTooltipContentParse(); // disable tooltip attachment temporarily
       $out = $this->mParser->parse( self::getTooltipWikiText( $title ), $title, $this->mParserOptions, true );
+      $this->afterTooltipContentParse(); // reenable tooltip attachment
       $html = $out->getText();
       $doPreload = ( $title->getNamespace() === NS_FILE );
       if ( trim( $html ) === '' ) {
@@ -631,14 +656,16 @@ class WikiTooltips {
    * @param Array $attribs The attributes of the <a> tag and their values.
    * @param string $ret Alternate HTML to return rather than the <a> tag the linker would generate.
    */
-  public function linkTooltipRender( $dummy, $target, $options, &$html, &$attribs, &$ret ) {   
-    if ( !$this->mIsFullyInitialized ) {
-      $this->performDelayedInitialization();
+  public function linkTooltipRender( $dummy, $target, $options, &$html, &$attribs, &$ret ) {
+    if ( !$this->mIsParsingTooltipContent ) {
+      if ( !$this->mIsFullyInitialized ) {
+        $this->performDelayedInitialization();
+      }
+
+      $this->maybeAttachTooltip( $target, $attribs );
+
+      return true;
     }
-    
-    $this->maybeAttachTooltip( $target, $attribs );
-    
-    return true;
   }
   
   public function imageLinkTooltipStartRender( &$skin, 
@@ -651,37 +678,39 @@ class WikiTooltips {
                                              ) {
     global $wgtoFollowTargetRedirects;
     
-    if ( !$this->mIsFullyInitialized ) {
-      $this->performDelayedInitialization();
-    }
-    
-    if ( isset( $frameParams['link-url'] ) && $frameParams['link-url'] !== '' ) {
-      $target = null; // Target is external, so no tooltip to worry about.
-    } elseif ( isset( $frameParams['link-title'] ) && $frameParams['link-title'] !== '' ) {
-      $target = $frameParams['link-title'];
-    } elseif ( !empty( $frameParams['no-link'] ) ) {
-      $target = null; // This image won't be linked to anything, so no tooltip.
-    } else {
-      $target = $title; // Image should be linking to its own page.
-    }
-    
-    if ( $target !== null ) {
-      if ( $wgtoFollowTargetRedirects === TO_RUN_EARLY ) {
-        $target = self::followRedirect( $target );
+    if ( !$this->mIsParsingTooltipContent ) {
+      if ( !$this->mIsFullyInitialized ) {
+        $this->performDelayedInitialization();
       }
-      
-      // This is a rather hideous hack to avoid having to scrape a link url to get the target title when it's
-      // actually possible to attach attributes to the link. Instead, while the target title is available as an actual
-      // Title, it is stored along with the results of the early checks by index. A numbered class is then added to
-      // allow the link to be identified in another hook, allowing tooltip attachment to be finished up then.
-      $this->mImageLinkTargets[$this->mImageLinkNextIndex] = $target;
-      if ( array_key_exists( 'class', $frameParams ) ) {
-        $frameParams['class'] .= ' ';
+
+      if ( isset( $frameParams['link-url'] ) && $frameParams['link-url'] !== '' ) {
+        $target = null; // Target is external, so no tooltip to worry about.
+      } elseif ( isset( $frameParams['link-title'] ) && $frameParams['link-title'] !== '' ) {
+        $target = $frameParams['link-title'];
+      } elseif ( !empty( $frameParams['no-link'] ) ) {
+        $target = null; // This image won't be linked to anything, so no tooltip.
       } else {
-        $frameParams['class'] = '';
+        $target = $title; // Image should be linking to its own page.
       }
-      $frameParams['class'] .= 'to_addTooltip_' . strval( $this->mImageLinkNextIndex );
-      ++$this->mImageLinkNextIndex;
+
+      if ( $target !== null ) {
+        if ( $wgtoFollowTargetRedirects === TO_RUN_EARLY ) {
+          $target = self::followRedirect( $target );
+        }
+
+        // This is a rather hideous hack to avoid having to scrape a link url to get the target title when it's
+        // actually possible to attach attributes to the link. Instead, while the target title is available as an actual
+        // Title, it is stored along with the results of the early checks by index. A numbered class is then added to
+        // allow the link to be identified in another hook, allowing tooltip attachment to be finished up then.
+        $this->mImageLinkTargets[$this->mImageLinkNextIndex] = $target;
+        if ( array_key_exists( 'class', $frameParams ) ) {
+          $frameParams['class'] .= ' ';
+        } else {
+          $frameParams['class'] = '';
+        }
+        $frameParams['class'] .= 'to_addTooltip_' . strval( $this->mImageLinkNextIndex );
+        ++$this->mImageLinkNextIndex;
+      }
     }
     
     return true;
@@ -730,7 +759,16 @@ class WikiTooltips {
    * @return Array The function output along with relevant parser options.
    */
   public function tipforRender( $parser, $frame, $params ) {
-    if ( !$this->mIsFullyInitialized ) {
+    if ( $this->mIsParsingTooltipContent ) {
+      // We're parsing content inside a tooltip, so don't actually attach anything, because it's pointless AND risky.
+      $displayText = "";
+      if ( isset( $params[1] ) ) {
+        $displayText = trim( $frame->expand( $params[1] ) );
+      } else if ( isset( $params[0] ) ) {
+        $displayText = trim( $frame->expand( $params[0] ) );
+      } 
+      return Array( $displayText, 'noparse' => false );
+    } else if ( !$this->mIsFullyInitialized ) {
       $this->performDelayedInitialization();
     }
     
