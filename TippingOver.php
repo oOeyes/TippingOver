@@ -23,7 +23,7 @@ $wgExtensionCredits[ 'other' ][] = array(
   'url'            => 'http://sw.aeongarden.com/wiki/TippingOver',
   'descriptionmsg' => 'tippingover-desc',
   'author'         => '[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]',
-  'version'        => '0.63',
+  'version'        => '0.64',
 );
 
 /**

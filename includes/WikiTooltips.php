@@ -610,7 +610,8 @@ class WikiTooltips {
     }
     if ( array_key_exists( 'emptyPageName', $setupInfo ) ) {
       $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
-    } else if ( array_key_exists( 'missingPage', $setupInfo ) ) {
+    } 
+    if ( array_key_exists( 'missingPage', $setupInfo ) ) {
       $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
     }
   }
