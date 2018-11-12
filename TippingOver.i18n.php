@@ -10,5 +10,5 @@
 
 $magicWords = Array();
 $magicWords['en'] = Array(
-  'tipfor'                => Array( 0, 'tipfor' ),
+  'tipfor' => Array( 0, 'tipfor' ),
 );

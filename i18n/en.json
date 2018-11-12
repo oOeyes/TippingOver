@@ -5,6 +5,7 @@
     ]
   },
   "tippingover"                 : "TippingOver",
+  "tippingover-extensionname"   : "TippingOver",
   "tippingover-desc"            : "An extension allowing editors to create tooltips for wiki links using either wiki pages or uploaded images.",
   "to-tooltip-page-name"        : "$1/Tooltip",
   "to-loading-tooltip"          : "",

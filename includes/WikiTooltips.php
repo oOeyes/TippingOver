@@ -1,8 +1,7 @@
 <?php
 
 /**
- * This singleton class handles most basic tooltip functions that occur during a page load, along with a few general
- * tooltip functions.
+ * This static class handles most basic tooltip functions that occur during a page load through index.php.
  *
  * @author Eyes <eyes@aeongarden.com>
  * @copyright Copyright � 2015 Eyes
@@ -21,59 +20,47 @@ class WikiTooltips {
   const PRELOAD_CLASS_ID = 'to-preload-';
   
   /**
-   * Holds the singleton instance.
-   * @var WikiTooltips
+   * Holds the TippingOver configuration.
+   * @var TippingOverConfiguration
    */
-  private static $mInstance = null;
+  private static $mConf = null;
   
   /**
    * Holds a parser instance
    * @var Parser
    */
-  private $mParser = null;
+  private static $mParser = null;
   
   /**
    * Holds the parser options
    * @var ParserOptions
    */
-  private $mParserOptions = null;
-  
-  /**
-   * Creates the singleton instance if it doesn't exist and returns it either way.
-   * @return WikiTooltips The singleton instance.
-   */
-  public static function getInstance() {
-    if ( self::$mInstance === null ) {
-      self::$mInstance = new self();
-    }
-    
-    return self::$mInstance;
-  }
+  private static $mParserOptions = null;
   
   /**
    * A sorted array of category members, used for the TO_PREQUERY category filter mode.
    * @var Array
    */
-  private $mCategoryFilterLookup = Array();
+  private static $mCategoryFilterLookup = Array();
   
   /**
    * An array keyed by ids of pages previously checked against the category filter, containing true for those that
    * passed and false for those that didn't. Used for the TO_DO_EARLY category filter mode.
    * @var Array
    */
-  private $mCategoryFilterCache = Array();
+  private static $mCategoryFilterCache = Array();
   
   /**
    * The next index to use for image link tooltip attachment.
    * @var int
    */
-  private $mImageLinkNextIndex = 0;
+  private static $mImageLinkNextIndex = 0;
   
   /**
    * An array containing the attributes to add to image links that should have tooltips.
    * @var Array
    */
-  private $mImageLinkTargets = Array();
+  private static $mImageLinkTargets = Array();
   
   /**
    * Indicates if we've initialized all variables needed to process links. This is a kludge as some of these need
@@ -81,7 +68,7 @@ class WikiTooltips {
    * redundant checks of this state, but due to time issues, this is the solution for now.
    * @var bool
    */
-  private $mIsFullyInitialized = false;
+  private static $mIsFullyInitialized = false;
   
   /**
    * Indicates if we're in the parser because we're parsing the content of a tooltip. There is no value in adding
@@ -89,68 +76,61 @@ class WikiTooltips {
    * recursively, so when this is true, attaching tooltips to content is disabled.
    * @var bool
    */
-  private $mIsParsingTooltipContent = false;
+  private static $mIsParsingTooltipContent = false;
   
   /**
    * The parsed HTML for the loading tooltip, or null if this is disabled somehow.
    * @var String
    */
-  private $mLoadingTooltipHtml;
+  private static $mLoadingTooltipHtml;
   
   /**
    * True if tooltips are enabled in this namespace.
    * @var String
    */
-  private $mTooltipsEnabledHere = false;
+  private static $mTooltipsEnabledHere = false;
   
   /**
    * Indicates if the loading tooltip should be preloaded.
    * @var bool
    */
-  private $mPreloadLoadingTooltip;
+  private static $mPreloadLoadingTooltip;
   
   /**
    * The parsed HTML for the missing page tooltip, or null if this is disabled somehow.
    * @var String
    */
-  private $mMissingPageTooltipHtml;
+  private static $mMissingPageTooltipHtml;
   
   /**
    * Indicates if the missing page tooltip should be preloaded.
    * @var bool
    */
-  private $mPreloadMissingPageTooltip;
+  private static $mPreloadMissingPageTooltip;
   
   /**
    * The parsed HTML for the empty page name tooltip, or null if this is disabled somehow.
    * @var String
    */
-  private $mEmptyPageNameTooltipHtml;
+  private static $mEmptyPageNameTooltipHtml;
   
   /**
    * Indicates if the empty page name tooltip should be preloaded.
    * @var bool
    */
-  private $mPreloadEmptyPageNameTooltip;
+  private static $mPreloadEmptyPageNameTooltip;
   
   /**
    * Indicates if a two-request process should be used instead of one. This happens in certain configurations to avoid
    * showing a loading tooltip when there is a strong possibility that there is no tooltip to show.
    * @var bool
    */
-  private $mUseTwoRequestProcess;
-  
-  /**
-   * This is a singleton, so private constructor.
-   */
-  private function __construct() { }
+  private static $mUseTwoRequestProcess;
   
   /**
    * Run in the BeforeInitialize hook, this attachs functions to various hooks for tooltip processing and registers
    * the JavaScript module if the current page is in a namespace where tooltips are enabled.
    * @global Array $wgHooks The global where hooks are registered in MediaWiki.
-   * @global Array $wgtoEnableInNamespaces Which namespaces tooltips are enabled in.
-   * @global bool $wgtoEnableOnImageLinks Whether tooltips are enabled on image links.
    * @param Title $title The title being requested.
    * @param Article $article The article object. Ignored.
    * @param OutputPage $output The output page.
@@ -158,88 +138,60 @@ class WikiTooltips {
    * @param WebRequest $request The request object. Ignored.
    * @param MediaWiki $mediawiki The MediaWiki object. Ignored.
    */
-  public function initializeHooksAndModule( &$title, &$article, &$output, &$user, $request, $mediawiki ) {
-    global $wgHooks, $wgtoEnableOnImageLinks, $wgtoEnableInNamespaces;
+  static public function initializeHooksAndModule( &$title, &$article, &$output, &$user, $request, $mediawiki ) {
+    global $wgHooks;
     
-    if ( array_key_exists( $title->getNamespace(), $wgtoEnableInNamespaces ) && 
-         $wgtoEnableInNamespaces[$title->getNamespace()] === true
-       ) {
-      $this->mTooltipsEnabledHere = true;
-      $wgHooks['MakeGlobalVariablesScript'][] = Array( $this, 'registerParsedConfigVarsForScriptExport' );
-      $wgHooks['LinkEnd'][] = Array( $this, 'linkTooltipRender' );
-      if ( $wgtoEnableOnImageLinks ) {
-        $wgHooks['ImageBeforeProduceHTML'][] = Array( $this, 'imageLinkTooltipStartRender' );
-        $wgHooks['ThumbnailBeforeProduceHTML'][] = Array( $this, 'imageLinkTooltipFinishRender' );
+    self::$mConf = new TippingOverConfiguration();
+    
+    if ( self::$mConf->enabled() && self::$mConf->enableInNamespace( $title->getNamespace() ) ) {
+      self::$mTooltipsEnabledHere = true;
+      $wgHooks['MakeGlobalVariablesScript'][] = Array( 'WikiTooltips::registerParsedConfigVarsForScriptExport' );
+      $wgHooks['LinkEnd'][] = Array( 'WikiTooltips::linkTooltipRender' );
+      if ( self::$mConf->enableOnImageLinks ) {
+        $wgHooks['ImageBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipStartRender' );
+        $wgHooks['ThumbnailBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipFinishRender' );
       }
       
       $output->addModules( 'ext.TippingOver.wikiTooltips' );
     }
   }
   
-    /**
+  /**
    * Calls all parser function registrations functions.
    * @param Parser $parser The parser object being initialized.
    * @return bool true to indicate no problems.
    */
   static public function initializeParserHooks( &$parser ) {
-    $parser->setFunctionHook( 'tipfor', 
-                              Array( self::getInstance(), 'tipforRender' ), 
-                              SFH_OBJECT_ARGS 
-                            );
+    $parser->setFunctionHook( 'tipfor', 'WikiTooltipsCore::tipforRender', SFH_OBJECT_ARGS );
     return true;
   }
   
   /**
    * Run in the MakeGlobalVariablesScript hook, this exports values needed by toWikiTooltips.js to perform the
    * client-side tooltip functions.
-   * @global int $wgtoPageTitleParse When to do the parsing of the target title into the tooltip title page.
-   * @global int $wgtoExistsCheck Whether and when to do a check to see if the tooltip page exists.
-   * @global int $wgtoCategoryFiltering Whether category filtering is enabled at all and when and how it happens.
    * @param Array $vars The variables to export.
    * @param OutputPage $out An OutputPage instance. Not used.
    */
-  public function registerParsedConfigVarsForScriptExport( &$vars, $out ) {
-    global $wgtoPageTitleParse, $wgtoExistsCheck, $wgtoCategoryFiltering;
-    
-    $vars['wgTippingOver']['doLatePageTitleParse'] = ( $wgtoPageTitleParse === TO_RUN_LATE );
-    $vars['wgTippingOver']['doLateExistsCheck'] = ( $wgtoExistsCheck === TO_RUN_LATE );
-    $vars['wgTippingOver']['doLateCategoryFiltering'] = ( $wgtoCategoryFiltering === TO_RUN_LATE );
-    $vars['wgTippingOver']['loadingTooltip'] = $this->mLoadingTooltipHtml;
-    $vars['wgTippingOver']['missingPageTooltip'] = $this->mMissingPageTooltipHtml;
-    $vars['wgTippingOver']['emptyPageNameTooltip'] = $this->mEmptyPageNameTooltipHtml;
-    $vars['wgTippingOver']['preloadLoadingTooltip'] = $this->mPreloadLoadingTooltip;
-    $vars['wgTippingOver']['preloadMissingPageTooltip'] = $this->mPreloadMissingPageTooltip;
-    $vars['wgTippingOver']['preloadEmptyPageNameTooltip'] = $this->mPreloadEmptyPageNameTooltip;
-    $vars['wgTippingOver']['useTwoRequestProcess'] = $this->mUseTwoRequestProcess;
-  }
-  
-  /**
-   * This function will check if the given page title references a redirect and returns the redirect target title if
-   * it does; otherwise, it returns the title given.
-   * @param Title $title The title to follow any redirect on.
-   * @return Title The original title if it isn't a redirect or the title of the redirect target if it is.
-   */
-  public static function followRedirect( $title ) {
-    if ( $title !== null && $title->getNamespace() !== NS_MEDIA && $title->getNamespace() > -1 ) {
-      $page = WikiPage::factory( $title );
-      $target = $page->getRedirectTarget();
-      if ( $target !== null ) {
-        return $target;
-      }
-    }
-    
-    return $title;
+  public static function registerParsedConfigVarsForScriptExport( &$vars, $out ) {
+    $vars['wgTippingOver']['doLateTargetRedirectFollow'] = self::$mConf->lateTargetRedirectFollow();
+    $vars['wgTippingOver']['doLatePageTitleParse'] = self::$mConf->latePageTitleParse();
+    $vars['wgTippingOver']['doLateExistsCheck'] = self::$mConf->lateExistsCheck();
+    $vars['wgTippingOver']['doLateCategoryFiltering'] = self::$mConf->lateCategoryFiltering();
+    $vars['wgTippingOver']['loadingTooltip'] = self::$mLoadingTooltipHtml;
+    $vars['wgTippingOver']['missingPageTooltip'] = self::$mMissingPageTooltipHtml;
+    $vars['wgTippingOver']['emptyPageNameTooltip'] = self::$mEmptyPageNameTooltipHtml;
+    $vars['wgTippingOver']['preloadLoadingTooltip'] = self::$mPreloadLoadingTooltip;
+    $vars['wgTippingOver']['preloadMissingPageTooltip'] = self::$mPreloadMissingPageTooltip;
+    $vars['wgTippingOver']['preloadEmptyPageNameTooltip'] = self::$mPreloadEmptyPageNameTooltip;
+    $vars['wgTippingOver']['useTwoRequestProcess'] = self::$mUseTwoRequestProcess;
   }
   
   /**
    * Recurvise function that assigns all page ids in the given category and its subcategories to the $mCategoryLookup
    * array, allowing for category filtering to be done without querying the database later.
-   * @global Array $wgtoNamespacesWithTooltips What namespaces have tooltips enabled for links into them.
    * @param string $title The appropriate value of page_name or cl_to for the category in the database.
    */
-  private function populateLookupFromCategory( $title ) {
-    global $wgtoNamespacesWithTooltips;
-    
+  private static function populateLookupFromCategory( $title ) {
     $dbr = wfGetDB( DB_SLAVE );
     
     $result = $dbr->select( Array( 'page', 'categorylinks' ),
@@ -253,32 +205,14 @@ class WikiTooltips {
       if ( $row->page_id !== null && 
            $row->page_id !== 0 &&
            $row->page_namespace !== null &&
-           array_key_exists( intval( $row->page_namespace ), $wgtoNamespacesWithTooltips ) &&
-           $wgtoNamespacesWithTooltips[intval( $row->page_namespace )] 
+           array_key_exists( intval( $row->page_namespace ), self::$mConf->namespacesWithTooltips() ) &&
+           self::$mConf->namespacesWithTooltips()[intval( $row->page_namespace )] 
          ) {
-        $this->mCategoryFilterLookup[] = intval( $row->page_id );
+        self::$mCategoryFilterLookup[] = intval( $row->page_id );
       }
       if ( intval( $row->page_namespace ) === NS_CATEGORY ) {
-        $this->populateLookupFromCategory( $row->page_title );
+        self::populateLookupFromCategory( $row->page_title );
       }
-    }
-  }
-  
-  /**
-   * Gets a Title object for the appropriate filter category, or returns null if there is an error getting it. Note
-   * this function does not check to see if category filtering is disabled.
-   * @global int $wgtoCategoryFiltering Whether category filtering is enabled at all and when and how it happens.
-   * @global string $wgtoEnablingCategory The title of the category that enable tooltips.
-   * @global string $wgtoDisablingCategory The title of the category that disables tooltips
-   * @return The Title object of the appropriate root category or null if there is an error generating it..
-   */
-  public static function getFilterCategoryTitle() {
-    global $wgtoCategoryFilterMode, $wgtoEnablingCategory, $wgtoDisablingCategory;
-    
-    if ( $wgtoCategoryFilterMode === TO_ENABLING ) {
-      return Title::newFromText( $wgtoEnablingCategory, NS_CATEGORY );
-    } else {
-      return Title::newFromText( $wgtoDisablingCategory, NS_CATEGORY );
     }
   }
   
@@ -286,11 +220,11 @@ class WikiTooltips {
    * Initiates the prefetch of page ids for category filtering should the extension configuration have it properly
    * enabled in the correct mode.
    */
-  private function populateLookup() {
-    $title = self::getFilterCategoryTitle();
+  private static function populateLookup() {
+    $title = WikiTooltipsCore::getFilterCategoryTitle( self::$mConf );
     if ( $title !== null ) {
-      $this->populateLookupFromCategory( $title->getDBKey() );
-      sort( $this->mCategoryFilterLookup, SORT_NUMERIC );
+      self::populateLookupFromCategory( $title->getDBKey() );
+      sort( self::$mCategoryFilterLookup, SORT_NUMERIC );
     }
   }
   
@@ -299,14 +233,14 @@ class WikiTooltips {
    * @param int $id The page id to search for.
    * @return bool True if the id was found, false if not.
    */
-  private function isInCategoryLookup( $id ) {
+  private static function isInCategoryLookup( $id ) {
     $id = intval( $id );
     $min = 0;
-    $max = count( $this->mCategoryFilterLookup ) - 1;
+    $max = count( self::$mCategoryFilterLookup ) - 1;
     
     while ( $min <= $max ) {
       $mid = intval( ( $min + $max ) / 2 );
-      $midId = $this->mCategoryFilterLookup[$mid];
+      $midId = self::$mCategoryFilterLookup[$mid];
       
       if ( $midId === $id ) {
         return true;
@@ -323,56 +257,55 @@ class WikiTooltips {
   /**
    * Returns true if the given namespace index and title pair passes the category filtering enabled by the current
    * configuration, or always passes true if no such filtering is enabled or if late checks are enabled.
-   * @global int $wgtoCategoryFiltering Whether category filtering is enabled at all and when and how it happens.
-   * @global int $wgtoCategoryFilterMode Whether the category enables or disables the tooltip.
    * @param Title $title The title to search for.
    * @return bool False if it fails the filter and should have its tooltip disabled, true to continue processing.
    */
-  private function passesCategoryFilter( $title ) {
-    global $wgtoCategoryFiltering, $wgtoCategoryFilterMode;
-    
-    switch ( $wgtoCategoryFiltering ) {
-      case TO_PREQUERY:
-        if ( $this->isInCategoryLookup( $title->getArticleID() ) ) {
-          return ($wgtoCategoryFilterMode === TO_ENABLING);
+  private static function passesCategoryFilter( $title ) {
+    if ( self::$mConf->earlyCategoryFiltering() ) {
+      if ( self::$mConf->preprocessCategoryFilter() ) {
+        if ( self::isInCategoryLookup( $title->getArticleID() ) ) {
+          return ( self::$mConf->enablingCategory() !== null );
         } else {
-          return ($wgtoCategoryFilterMode === TO_DISABLING);
+          return ( self::$mConf->enablingCategory() === null );
         }
-      case TO_RUN_EARLY:
+      } else {
         $id = $title->getArticleID();
-        if ( array_key_exists( $id, $this->mCategoryFilterCache ) ) {
-          return $this->mCategoryFilterCache[$id];
+        if ( array_key_exists( $id, self::$mCategoryFilterCache ) ) {
+          return self::$mCategoryFilterCache[$id];
         } else {
           $category = self::getFilterCategoryTitle()->getText();
           $finder = new CategoryFinder;
           $finder->seed( Array( $id ), Array( $category ) );
           if ( count( $finder->run() ) === 1 ) {
-            return ( $this->mCategoryFilterCache[$id] = ($wgtoCategoryFilterMode === TO_ENABLING) );
+            return ( self::$mCategoryFilterCache[$id] = ( self::$mConf->enablingCategory() !== null ) );
           } else {
-            return ( $this->mCategoryFilterCache[$id] = ($wgtoCategoryFilterMode === TO_DISABLING) );
+            return ( $self::$mCategoryFilterCache[$id] = ( self::$mConf->enablingCategory() === null ) );
           }
         }
-      default:
-        return true;
+      }
+    } else {
+      return true;
     }
   }
   
   /**
    * Converts all nonnumeric, nonalphabetic character or any character (actually, byte) outside the ASCII set to a hex 
    * representation beginning with an underscore and ending with a dash. Used primarily for generating unique element 
-   * ids from page titles. This must produce results consistent with otWikiTooltips.encodeAllSpecials in 
-   * otWikiTooltips.js. 
+   * ids from page titles. This must produce results consistent with toWikiTooltips.encodeAllSpecials in 
+   * toWikiTooltips.js. 
    * @param string $unencoded The unencoded string.
    * @return string The encoded string.
    */
-  private function encodeAllSpecial( $unencoded ) {
+  private static function encodeAllSpecial( $unencoded ) {
     $encoded = ""; 
-    $c;
+    $c = null;
     $safeChars = "/[0-9A-Za-z]/";
     for( $i = 0; $i < strlen( $unencoded ); $i++ ) {
       $c = $unencoded[$i];
       if ( preg_match( $safeChars, $c ) === 1 ) {
         $encoded = $encoded . $c;
+      } else if ( $c === ' ' ) {
+        $encoded = $encoded . '_';
       } else {
         $encoded = $encoded . '_' . dechex( ord($c) ) . '-';
       }
@@ -381,44 +314,27 @@ class WikiTooltips {
   }
   
   /**
-   * Returns the wikitext used to retrieve the appropriate content for a given tooltip page.
-   * @param Title $title A title object for the given tooltip page.
-   * @return string The wikitext to parse to get the appropriate content.
-   */
-  public static function getTooltipWikiText( $title ) {
-    if ( $title !== null ) {
-      if ( $title->getNamespace() === NS_FILE ) {
-        return '[[' . $title->getPrefixedText() . '|link=]]';
-      } else {
-        return '{{:' . $title->getPrefixedText() . '}}';
-      }
-    } else {
-      return null;
-    }
-  }
-  
-  /**
    * Gets a Parser and ParserOptions instance by cloning the main parser, using the same approach as MediaWiki's
    * internal messages API.
    * @global Parser $wgParser The main parser object.
    * @global Array $wgParserConf The main parser configuration.
    */
-  private function initializeParser() {
+  private static function initializeParser() {
     global $wgParser, $wgParserConf;
     
-    if ( $this->mParser === null && isset( $wgParser ) ) {
+    if ( self::$mParser === null && isset( $wgParser ) ) {
       $wgParser->firstCallInit();
       $class = $wgParserConf['class'];
       if ( $class == 'ParserDiffTest' ) {
-        $this->mParser = new $class( $wgParserConf );
+        self::$mParser = new $class( $wgParserConf );
       } else {
-        $this->mParser = clone $wgParser;
+        self::$mParser = clone $wgParser;
       }
     }
     
-    if ( $this->mParserOptions === null ) {
-      $this->mParserOptions = new ParserOptions;
-      $this->mParserOptions->setEditSection( false );
+    if ( self::$mParserOptions === null ) {
+      self::$mParserOptions = new ParserOptions;
+      self::$mParserOptions->setEditSection( false );
     }
   }
   
@@ -426,15 +342,15 @@ class WikiTooltips {
    * Disables tooltip attachment until afterTooltipContentParse is called. Intended to provide a way to disable
    * tooltip attachment when parsing the actual content of a tooltip.
    */
-  public function beforeTooltipContentParse( ) {
-    $this->mIsParsingTooltipContent = true;
+  public static function beforeTooltipContentParse( ) {
+    self::$mIsParsingTooltipContent = true;
   }
   
   /**
    * Reenables tooltip attachment after beforeTooltipContentParse is called.
    */
-  public function afterTooltipContentParse( ) {
-    $this->mIsParsingTooltipContent = false;
+  public static function afterTooltipContentParse( ) {
+    self::$mIsParsingTooltipContent = false;
   }
   
   /**
@@ -444,12 +360,16 @@ class WikiTooltips {
    * @param string $html Returns the page content parsed to HTML or null.
    * @param bool $doPreload Returns true if the tooltip show use preload logic or false otherwise.
    */
-  private function parseTooltip( $titleText, &$html, &$doPreload ) {
-    if ( $this->mParser !== null && $titleText !== null && trim( $titleText ) !== '' ) {
+  private static function parseTooltip( $titleText, &$html, &$doPreload ) {
+    if ( self::$mParser !== null && $titleText !== null && trim( $titleText ) !== '' ) {
       $title = Title::newFromText( $titleText );
-      $this->beforeTooltipContentParse(); // disable tooltip attachment temporarily
-      $out = $this->mParser->parse( self::getTooltipWikiText( $title ), $title, $this->mParserOptions, true );
-      $this->afterTooltipContentParse(); // reenable tooltip attachment
+      WikiTooltipsCore::flagTooltipAttachmentUnsafe(); // tooltip attaching risks fatal redundant parse here, so disable
+      $out = self::$mParser->parse( WikiTooltipsCore::getTooltipWikiText( $title ), 
+                                    $title, 
+                                    self::$mParserOptions, 
+                                    true 
+                                  );
+      WikiTooltipsCore::flagTooltipAttachmentSafe(); // safe again to attach tooltips
       $html = $out->getText();
       $doPreload = ( $title->getNamespace() === NS_FILE );
       if ( trim( $html ) === '' ) {
@@ -464,61 +384,57 @@ class WikiTooltips {
   
   /**
    * Performs potentially expensive initialization tasks which require parser or database access.
-   * @global string $wgtoLoadingTooltip The page name for the loading tooltip content.
-   * @global string $wgtoMissingPageTooltip The page name for the missing tooltip page content.
-   * @global string $wgtoEmptyPageNameTooltip The page for the tooltip content when title parsing gives an empty result.
-   * @global bool $wgtoAssumeNonemptyPageTitle Whether to assume an empty page title will not be returned.
-   * @global int $wgtoPageTitleParse When to do the parsing of the target title into the tooltip title page.
-   * @global int $wgtoExistsCheck Whether and when to do a check to see if the tooltip page exists.
-   * @global int $wgtoCategoryFiltering Whether category filtering is enabled at all and when and how it happens.
    */
-  private function performDelayedInitialization() {
-    global $wgtoLoadingTooltip, $wgtoMissingPageTooltip, $wgtoEmptyPageNameTooltip;
-    global $wgtoPageTitleParse, $wgtoAssumeNonemptyPageTitle, $wgtoExistsCheck, $wgtoCategoryFiltering;
-    
-    $this->initializeParser();
-    $this->parseTooltip( $wgtoLoadingTooltip, 
-                         $this->mLoadingTooltipHtml, 
-                         $this->mPreloadLoadingTooltip 
-                       );
-    $this->parseTooltip( $wgtoMissingPageTooltip, 
-                         $this->mMissingPageTooltipHtml, 
-                         $this->mPreloadMissingPageTooltip 
-                       );
-    if ( !$wgtoAssumeNonemptyPageTitle ) {
-      $this->parseTooltip( $wgtoEmptyPageNameTooltip,
-                           $this->mEmptyPageNameTooltipHtml, 
-                           $this->mPreloadEmptyPageNameTooltip 
-                         );
+  private static function performDelayedInitialization() {
+    self::initializeParser();
+    self::parseTooltip( self::$mConf->loadingTooltip(), 
+                        self::$mLoadingTooltipHtml, 
+                        self::$mPreloadLoadingTooltip 
+                      );
+    self::parseTooltip( self::$mConf->missingPageTooltip(), 
+                        self::$mMissingPageTooltipHtml, 
+                        self::$mPreloadMissingPageTooltip 
+                      );
+    if ( !self::$mConf->assumeNonemptyPageTitle() ) {
+      self::parseTooltip( self::$mConf->emptyPageNameTooltip(),
+                          self::$mEmptyPageNameTooltipHtml, 
+                          self::$mPreloadEmptyPageNameTooltip 
+                        );
     } else {
-      $this->mEmptyPageNameTooltipHtml = null;
-      $this->mPreloadEmptyPageNameTooltip = false;
+      self::$mEmptyPageNameTooltipHtml = null;
+      self::$mPreloadEmptyPageNameTooltip = false;
     }
     
-    $this->mUseTwoRequestProcess = false;
-    if ( $this->mLoadingTooltipHtml !== null ) {
-      if ( $wgtoPageTitleParse === TO_RUN_LATE && 
-           $wgtoExistsCheck !== TO_DISABLE && 
-           $this->mMissingPageTooltipHtml === null
+    self::$mUseTwoRequestProcess = false;
+    if ( self::$mLoadingTooltipHtml !== null ) {
+      if ( self::$mConf->latePageTitleParse() && 
+           !self::$mConf->lateExistsCheck() && 
+           self::$mMissingPageTooltipHtml === null
          ) {
-        $this->mUseTwoRequestProcess = true;
-      } else if ( $wgtoPageTitleParse === TO_RUN_LATE &&
-                  !$wgtoAssumeNonemptyPageTitle && 
-                  $this->mEmptyPageNameTooltipHtml === null 
+        self::$mUseTwoRequestProcess = true;
+      } else if ( self::$mConf->latePageTitleParse() &&
+                  !self::$mConf->assumeNonemptyPageTitle() && 
+                  self::$mEmptyPageNameTooltipHtml === null 
                 ) {
-        $this->mUseTwoRequestProcess = true;
-      } else if ( $wgtoExistsCheck === TO_RUN_LATE && $this->mMissingPageTooltipHtml === null ) {
-        $this->mUseTwoRequestProcess = true;
-      } else if ( $wgtoCategoryFiltering == TO_RUN_LATE ) {
-        $this->mUseTwoRequestProcess = true;
+        self::$mUseTwoRequestProcess = true;
+      } else if ( self::$mConf->lateExistsCheck() && self::$mMissingPageTooltipHtml === null ) {
+        self::$mUseTwoRequestProcess = true;
+      } else if ( self::$mConf->lateCategoryFiltering() ) {
+        self::$mUseTwoRequestProcess = true;
       }
     }
     
-    if ( $wgtoCategoryFiltering === TO_PREQUERY ) {
-      $this->populateLookup();
+    if ( self::$mUseTwoRequestProcess && !self::$mConf->allowTwoRequestProcess() ) {
+      self::$mUseTwoRequestProcess = false;
+      self::$mLoadingTooltipHtml = null;
+      self::$mPreloadLoadingTooltip = false;
     }
     
-    $this->mIsFullyInitialized = true;
+    if ( self::$mConf->earlyCategoryFiltering() && self::$mConf->preprocessCategoryFilter() ) {
+      self::populateLookup();
+    }
+    
+    self::$mIsFullyInitialized = true;
   }
   
   /**
@@ -526,63 +442,75 @@ class WikiTooltips {
    * does not have a tooltip and returns null if not. Otherwise, it returns an array of information needed for both 
    * displaying the tooltip client-side and running any further checks there to see if a tooltip is available for the 
    * link.
-   * @global Array $wgtoNamespacesWithTooltips What namespaces have tooltips enabled for links into them.
-   * @global int $wgtoPageTitleParse When to do the parsing of the target title into the tooltip title page.
-   * @global int $wgtoExistsCheck Whether and when to do a check to see if the tooltip page exists.
    * @param Title $target The target page of the link or tooltip span.
    * @return Array null if the link should not have a tooltip, or an array of information if it might get one.
    */
-  private function runEarlyTooltipChecks( $target ) {
-    global $wgtoNamespacesWithTooltips, $wgtoPageTitleParse, $wgtoExistsCheck;
-    
-    if ( array_key_exists( $target->getNamespace(), $wgtoNamespacesWithTooltips ) &&
-         $wgtoNamespacesWithTooltips[$target->getNamespace()] &&
-         $this->passesCategoryFilter( $target ) 
-       ) {
-      $tooltipTitle = null;
-      $setupInfo = Array();
-      
-      if ( $wgtoPageTitleParse === TO_RUN_EARLY ) {
-        // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute
-        // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
-        $tooltipTitleWikitext = wfMessage( 'to-tooltip-page-name' )->inContentLanguage()
-                                                                   ->params( $target->getPrefixedText() )
-                                                                   ->plain();
-        $messageTitle = Title::newFromText( 'MediaWiki:To-tooltip-page-name' );
-        $tooltipTitleParse = $this->mParser->parse( $tooltipTitleWikitext, $messageTitle, $this->mParserOptions, true );
-        $tooltipTitleText = Parser::stripOuterParagraph( $tooltipTitleParse->getText() );
-        if ( trim( $tooltipTitleText ) !== "" ) {
-          $tooltipTitle = Title::newFromText( $tooltipTitleText );
-          if ( $tooltipTitle !== null ) {
-            if ( $wgtoExistsCheck === TO_RUN_EARLY ) {
-              if ( $tooltipTitle->exists() ) {
-                $setupInfo['missingPage'] = false;
-                $setupInfo['isImage'] = ( $tooltipTitle->getNamespace() === NS_FILE );
-              } else if ( $this->mMissingPageTooltipHtml !== null ) {
-                $setupInfo['missingPage'] = true;
-                $setupInfo['isImage'] = $this->mPreloadMissingPageTooltip;
-              } else {
-                return null; // the tooltip page is missing, and there's no tooltip for this situation 
-              }
-            } else {
-              $setupInfo['isImage'] = ( $tooltipTitle->getNamespace() === NS_FILE );
-            }
-            $setupInfo['tooltipTitle'] = $tooltipTitle->getPrefixedText();
-            $setupInfo['emptyPageName'] = false;
-          } else {
-            return null; // not an empty page name, but Title couldn't process it, so no tooltip.
-          }
-        } else if ( $this->mEmptyPageNameTooltipHtml !== null ) {
-          $setupInfo['emptyPageName'] = true;
-          $setupInfo['isImage'] = $this->mPreloadEmptyPageNameTooltip;
-        } else {
-          return null; // the tooltip title parsed to an empty value, and we have no tooltip for it
-        }
+  private static function runEarlyTooltipChecks( $target ) {
+    if ( self::$mConf->namespaceWithTooltips( $target->getNamespace() ) ) {
+      $setupInfo = Array( 'canLateFollow' => true );
+      $setupInfo['directTargetTitle'] = $directTarget = $target;
+      if ( self::$mConf->earlyTargetRedirectFollow() ) {
+        $target = WikiTooltipsCore::followRedirect( $target );
+        $setupInfo['canLateFollow'] = false;
       }
-      
-      return $setupInfo;
-    } else {
-      return null; // didn't pass category filter or namespace check, so no tooltip.
+      $setupInfo['targetTitle'] = $target;
+
+      if ( self::passesCategoryFilter( $target ) ) {
+        $setupInfo['canLateFollow'] = $setupInfo['canLateFollow'] && !( self::$mConf->earlyCategoryFiltering() );
+        $tooltipTitle = null;
+
+        if ( self::$mConf->earlyPageTitleParse() ) {
+          $setupInfo['canLateFollow'] = false;
+          // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute
+          // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
+          $tooltipTitleWikitext = wfMessage( 'to-tooltip-page-name' )->inContentLanguage()
+                                                                     ->params( $target->getPrefixedText(),
+                                                                               $target->getFragment(),
+                                                                               $directTarget->getPrefixedText(),
+                                                                               $directTarget->getFragment()
+                                                                             )
+                                                                     ->plain();
+          $messageTitle = Title::newFromText( 'MediaWiki:To-tooltip-page-name' );
+          $tooltipTitleParse = self::$mParser->parse( $tooltipTitleWikitext, 
+                                                      $messageTitle, 
+                                                      self::$mParserOptions, 
+                                                      true 
+                                                    );
+          $tooltipTitleText = WikiTooltipsCore::stripOuterTags( $tooltipTitleParse->getText() );
+          if ( trim( $tooltipTitleText ) !== "" ) {
+            $tooltipTitle = Title::newFromText( $tooltipTitleText );
+            if ( $tooltipTitle !== null ) {
+              if ( self::$mConf->earlyExistsCheck() ) {
+                $setupInfo['canLateFollow'] = false;
+                if ( $tooltipTitle->exists() ) {
+                  $setupInfo['missingPage'] = false;
+                  $setupInfo['isImage'] = ( $tooltipTitle->getNamespace() === NS_FILE );
+                } else if ( self::$mMissingPageTooltipHtml !== null ) {
+                  $setupInfo['missingPage'] = true;
+                  $setupInfo['isImage'] = self::$mPreloadMissingPageTooltip;
+                } else {
+                  return null; // the tooltip page is missing, and there's no tooltip for this situation 
+                }
+              } else {
+                $setupInfo['isImage'] = ( $tooltipTitle->getNamespace() === NS_FILE );
+              }
+              $setupInfo['tooltipTitle'] = $tooltipTitle->getPrefixedText();
+              $setupInfo['emptyPageName'] = false;
+            } else {
+              return null; // not an empty page name, but Title couldn't process it, so no tooltip.
+            }
+          } else if ( self::$mEmptyPageNameTooltipHtml !== null ) {
+            $setupInfo['emptyPageName'] = true;
+            $setupInfo['isImage'] = self::$mPreloadEmptyPageNameTooltip;
+          } else {
+            return null; // the tooltip title parsed to an empty value, and we have no tooltip for it
+          }
+        }
+
+        return $setupInfo;
+      } else {
+        return null; // didn't pass category filter or namespace check, so no tooltip.
+      }
     }
   }
   
@@ -593,15 +521,19 @@ class WikiTooltips {
    * @param Array $setupInfo Setup information from runEarlyTooltipChecks().
    * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
    */
-  private function setUpAttribs( $target, $setupInfo, &$attribs ) {
-    $tooltipId = $this->encodeAllSpecial( $target->getPrefixedText() );
+  private static function setUpAttribs( $setupInfo, &$attribs ) {
+    $tooltipId = self::encodeAllSpecial( $setupInfo['targetTitle']->getPrefixedText() );
     if ( array_key_exists( 'class', $attribs ) ) {
       $attribs['class'] .= ' to_hasTooltip';
     } else {
       $attribs['class'] = 'to_hasTooltip';
     }
     $attribs['data-to-id'] = $tooltipId;
-    $attribs['data-to-target-title'] = $target->getPrefixedText();
+    if ( !$setupInfo['directTargetTitle']->equals( $setupInfo['targetTitle'] ) ) {
+      $attribs['data-to-direct-target-title'] = $setupInfo['directTargetTitle']->getFullText();
+    }
+    $attribs['data-to-target-title'] = $setupInfo['targetTitle']->getFullText();
+    $attribs['data-to-can-late-follow'] = $setupInfo['canLateFollow'] ? 'true' : 'false';
     if ( $setupInfo['tooltipTitle'] !== null ) {
       $attribs['data-to-tooltip-title'] = $setupInfo['tooltipTitle'];
     }
@@ -621,22 +553,16 @@ class WikiTooltips {
    * does not have a tooltip and returns false if not. Otherwise, this adds appropriate HTML attributes as name/value 
    * pairs to the second given array, which should either be an empty array or an array of existing HTML attributes that 
    * should be added to the final tag, and also returns true.
-   * @global int $wgtoFollowTargetRedirects The mode to use for following target redirects.
    * @param Title $target The target page of the link or tooltip span.
    * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
    * @return bool True if there is a tooltip and tooltip attribtues have been added.
    */
-  private function maybeAttachTooltip( $target, &$attribs ) {
-    global $wgtoFollowTargetRedirects;
-    
+  private static function maybeAttachTooltip( $target, &$attribs ) {
     if ( $target !== null ) {
-      if ( $wgtoFollowTargetRedirects === TO_RUN_EARLY ) {
-        $target = self::followRedirect( $target );
-      }
-      $setupInfo = $this->runEarlyTooltipChecks( $target );
+      $setupInfo = self::runEarlyTooltipChecks( $target );
 
       if ( $setupInfo !== null ) {
-        $this->setUpAttribs( $target, $setupInfo, $attribs );
+        self::setUpAttribs( $setupInfo, $attribs );
         return true;
       } else {
         return false;
@@ -657,31 +583,41 @@ class WikiTooltips {
    * @param Array $attribs The attributes of the <a> tag and their values.
    * @param string $ret Alternate HTML to return rather than the <a> tag the linker would generate.
    */
-  public function linkTooltipRender( $dummy, $target, $options, &$html, &$attribs, &$ret ) {
-    if ( !$this->mIsParsingTooltipContent ) {
-      if ( !$this->mIsFullyInitialized ) {
-        $this->performDelayedInitialization();
+  public static function linkTooltipRender( $dummy, $target, $options, &$html, &$attribs, &$ret ) {
+    if ( WikiTooltipsCore::isTooltipAttachmentSafe() ) {
+      if ( !self::$mIsFullyInitialized ) {
+        self::performDelayedInitialization();
       }
 
-      $this->maybeAttachTooltip( $target, $attribs );
+      self::maybeAttachTooltip( $target, $attribs );
 
       return true;
     }
   }
   
-  public function imageLinkTooltipStartRender( &$skin, 
-                                               &$title, 
-                                               &$file, 
-                                               &$frameParams, 
-                                               &$handlerParams, 
-                                               &$time, 
-                                               &$res 
-                                             ) {
-    global $wgtoFollowTargetRedirects;
-    
-    if ( !$this->mIsParsingTooltipContent ) {
-      if ( !$this->mIsFullyInitialized ) {
-        $this->performDelayedInitialization();
+  /**
+   * Attached to ImageBeforeProduceHTML, this collects the target of an image link and uses an ugly hack to mark the
+   * image link for processing in a later hook where it's possibly to attach attributes to the link.
+   * @param Skin $skin The current skin. Ignored.
+   * @param Title $title Title of the image.
+   * @param File $file File of the image. Ignored.
+   * @param Array $frameParams Various parameters for the image and link.
+   * @param Array $handlerParams Various parameters for the image and link. Ignored.
+   * @param String $time The timestamp of the image or false for the current image. Ignored.
+   * @param String $res HTML override. Not used.
+   * @return boolean false to use the HTML override. true returned instead to continue normal processing.
+   */
+  public static function imageLinkTooltipStartRender( &$skin, 
+                                                      &$title, 
+                                                      &$file, 
+                                                      &$frameParams, 
+                                                      &$handlerParams, 
+                                                      &$time, 
+                                                      &$res 
+                                                   ) {
+    if ( WikiTooltipsCore::isTooltipAttachmentSafe() ) {
+      if ( !self::$mIsFullyInitialized ) {
+        self::performDelayedInitialization();
       }
 
       if ( isset( $frameParams['link-url'] ) && $frameParams['link-url'] !== '' ) {
@@ -695,29 +631,34 @@ class WikiTooltips {
       }
 
       if ( $target !== null ) {
-        if ( $wgtoFollowTargetRedirects === TO_RUN_EARLY ) {
-          $target = self::followRedirect( $target );
-        }
-
         // This is a rather hideous hack to avoid having to scrape a link url to get the target title when it's
         // actually possible to attach attributes to the link. Instead, while the target title is available as an actual
         // Title, it is stored along with the results of the early checks by index. A numbered class is then added to
         // allow the link to be identified in another hook, allowing tooltip attachment to be finished up then.
-        $this->mImageLinkTargets[$this->mImageLinkNextIndex] = $target;
+        self::$mImageLinkTargets[self::$mImageLinkNextIndex] = $target;
         if ( array_key_exists( 'class', $frameParams ) ) {
           $frameParams['class'] .= ' ';
         } else {
           $frameParams['class'] = '';
         }
-        $frameParams['class'] .= 'to_addTooltip_' . strval( $this->mImageLinkNextIndex );
-        ++$this->mImageLinkNextIndex;
+        $frameParams['class'] .= 'to_addTooltip_' . strval( self::$mImageLinkNextIndex );
+        ++self::$mImageLinkNextIndex;
       }
     }
     
     return true;
   }
   
-  public function imageLinkTooltipFinishRender( $thumbnail, &$attribs, &$linkAttribs ) {
+  /**
+   * Attached to the ThumbnailBeforeProduceHTML hook, this function, with the aid of the hack in 
+   * imageLinkTooltipStartRender will add appropriate data elements and other attributes to any image link that should 
+   * have or might have a tooltip, preparing it for the client-side script to finish the job.
+   * @param ThumbnailImage $thumbnail The ThumbnailImage object for the image. Ignored.
+   * @param Array $attribs The attributes for the img tag.
+   * @param Array $linkAttribs The attributes for the a tag.
+   * @return boolean
+   */
+  public static function imageLinkTooltipFinishRender( $thumbnail, &$attribs, &$linkAttribs ) {
     if ( array_key_exists( 'class', $attribs ) ) {
       $outClasses = Array();
       $inClasses = explode( ' ', $attribs['class'] );
@@ -735,9 +676,9 @@ class WikiTooltips {
           $outClasses[] = $class;
         }
       }
-      if ( $index !== null && array_key_exists( $index, $this->mImageLinkTargets ) ) {
-        $target = $this->mImageLinkTargets[$index];
-        $this->maybeAttachTooltip( $target, $linkAttribs );
+      if ( $index !== null && array_key_exists( $index, self::$mImageLinkTargets ) ) {
+        $target = self::$mImageLinkTargets[$index];
+        self::maybeAttachTooltip( $target, $linkAttribs );
       }
       if ( count( $outClasses ) > 0 ) {
         $attribs['class'] = implode( ' ', $outClasses );
@@ -750,34 +691,25 @@ class WikiTooltips {
   }
 
   /**
-   * The function handles the #tipfor function. If tooltips are enabled in the current namespace this function will 
-   * output text into a span and add appropriate data elements and other attributes to that span if it should have or 
-   * might have a tooltip, preparing it for the client-side script to finish the job. If tooltips are not enabled in
-   * the current namespace, it will simply output the appropriate text.
+   * The function handles the #tipfor function when tooltip attachment is flagged as safe. If tooltips are enabled in 
+   * the current namespace this function will output text into a span and add appropriate data elements and other 
+   * attributes to that span if it should have or might have a tooltip, preparing it for the client-side script to 
+   * finish the job. If tooltips are not enabled in the current namespace, it will simply output the appropriate text.
    * @param Parser $parser The parser object. Ignored.
    * @param PPFrame $frame The parser frame object.
    * @param Array $params The parameters and values together, not yet expanded or trimmed.
    * @return Array The function output along with relevant parser options.
    */
-  public function tipforRender( $parser, $frame, $params ) {
-    if ( $this->mIsParsingTooltipContent ) {
-      // We're parsing content inside a tooltip, so don't actually attach anything, because it's pointless AND risky.
-      $displayText = "";
-      if ( isset( $params[1] ) ) {
-        $displayText = trim( $frame->expand( $params[1] ) );
-      } else if ( isset( $params[0] ) ) {
-        $displayText = trim( $frame->expand( $params[0] ) );
-      } 
-      return Array( $displayText, 'noparse' => false );
-    } else if ( !$this->mIsFullyInitialized ) {
-      $this->performDelayedInitialization();
+  public static function tipforRender( $parser, $frame, $params ) {
+    if ( !self::$mIsFullyInitialized ) {
+      self::performDelayedInitialization();
     }
     
     $targetTitleText = "";
     $targetTitle = null;
     if ( isset( $params[0] ) ) {
       $targetTitleText = trim( $frame->expand( $params[0] ) );
-      if ( $this->mTooltipsEnabledHere ) {
+      if ( self::$mTooltipsEnabledHere ) {
         $targetTitle = Title::newFromText( $targetTitleText );
       }
     }
@@ -797,7 +729,7 @@ class WikiTooltips {
     $output = $displayText;
     if ( $targetTitle !== null ) {
       $attribs = Array();
-      if ( $this->maybeAttachTooltip( $targetTitle, $attribs ) ) {
+      if ( self::maybeAttachTooltip( $targetTitle, $attribs ) ) {
         $output = Xml::element( 'span', $attribs, $displayText, false );
       }
     }

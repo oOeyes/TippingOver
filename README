@@ -1,0 +1,705 @@
+TippingOver is a MediaWiki extension allowing editors to create tooltips for wiki links using either wiki pages or 
+uploaded images. It can also attach tooltips to arbitrary page content via the provided #tipfor function. 
+
+GitHub repository: https://github.com/oOeyes/TippingOver
+Author: Shawn Bruckner (http://www.mediawiki.org/wiki/User:OoEyes)
+License: GNU General Public License 2.0 or later (http://www.gnu.org/copyleft/gpl.html)
+
+====================================
+== THE VERY BASICS OF TIPPINGOVER ==
+====================================
+"Tooltips" are boxes that appear when hovering over a particular page element, such as a link, word, phrase, or image.
+Often, wikis that use tooltips rely on an external resource to provide that content. TippingOver is not useful in that
+case, but if tooltips that wiki users can add and edit through the wiki itself are desirable, then TippingOver can help.
+
+TippingOver is designed to automatically attach tooltips to wiki links or the content of #tipfor parser function calls,
+and it draws the tooltip content from pages or images on the wiki. By default, the tooltip for a page called "Example"
+would be on "Example/Tooltip", but "MediaWiki:To-tooltip-page-name" can be adjusted to permit a great number of
+potential page-tooltip naming conventions.
+
+=======================================================
+== TIPPINGOVER CONFIGURATION SETTINGS (0.6.5 and up) ==
+=======================================================
+IMPORTANT NOTE: There have been a number of changes to configuration settings in version 0.6.5. See the section below
+on updating from older deprecated settings.
+
+TippingOver does have a lot of configuration settings and configuration may be quite complex in certain cases. But many
+of the settings below are performance tweaks for users using more advanced setups. Many use cases work just fine with
+default settings, and other common use cases only require a few setting changes.
+
+Settings that may be of interest for simple use cases include:
+  $wgtoEnableInNamespaces -- Determines what namespaces tooltips can be seen in.
+  $wgtoNamespacesWithTooltips -- Determines if a link can have a tooltip based on what namespace it links into.
+  $wgtoEnableOnImageLinks -- Determines if images that are linking to pages will get tooltips.
+  $wgtoLoadingTooltip -- Identifies the page that contains a tooltip to be shown while loading the correct one.
+  $wgtoMissingPageTooltip -- Identifies the page that contains a tooltip to be shown when a tooltip is not created.
+  $wgtoEmptyPageNameTolltip -- Identifies the page that contains a tooltip to be shown when a tooltip-enabled link fails
+                               to provide a page name for a tooltip.
+  $wgtoEarlyCategoryFiltering and $wgtoLateCategoryFiltering -- For when only some links on a wiki should get tooltips.
+
+See below for more information on these settings.
+
+
+Some quick TippingOver terminology to help clarify the following setting descriptions:
+
+  Link: Any portion of page content which TippingOver considers attaching a tooltip to. In 0.6.5, this may be internal
+      links to other pages on the wiki or any content contained within a #tipfor call.
+
+  Target: For internal links, the target is the page they link to. In other words, where the wiki takes you when you
+      follow the link. In #tipfor calls, the target page is the page title passed as the first parameter.
+
+  Early: "Early" steps are actions TippingOver performs before a page is even viewed. These will generally happen when
+      a page is saved and any other time the wiki needs to regenerate the page from its wikicode, such as perhaps a
+      template the page uses being edited. Performing actions early has the advantage of avoiding doing the work for 
+      each user every time they hover over a link, but in some use cases, might unacceptably degrade the speed of page 
+      regeneration resulting in slow loads or even timeouts.
+
+  Late: "Late" steps are actions TippingOver waits to perform until the user actually hovers over the link with the
+      mouse. This is also commonly referred to as "lazy", such as in "lazy load." This has the advantage of saving these
+      steps until they need to be performed, which also ensures they are performed with current information, but it can 
+      slow tooltip loads, since more must be done on mouse-over, and means the work will have to be repeated for every
+      user.
+
+
+For configuration, it also helps to have an overview of TippingOver's process for attaching and showing tooltips:
+
+  First, a namespace check is performed on the current page. If it's outside an enabled namespace (see 
+  $wgtoEnableinNamespaces), TippingOver will stop doing anything on that page.
+
+  Second, optionally, an lookup index is built for the category filter. (See $wgtoPreprocessCategoryFilter.)
+
+  Then, for each link during the early stage, the following steps are performed except when disabled (see 
+  $wgEnableOnImageLinks for including or excluding image links):
+      1. Target page namespace check. See $wgtoNamespacesWithTooltips.
+      2. Early target redirect follow. See $wgEarlyTargetRedirectFollow.
+      3. Early category filtering. See $wgEarlyCategoryFiltering, $wgEnablingCategory, and $wgDisablingCategory.
+      4. Early page title parse. See $wgEarlyPageTitleParse and $wgtoAssumeNonemptyPageTitle.
+      5. Early exists check. See $wgEarlyExistsCheck.
+      6. If no early checks prevent it, a tooltip is attached.
+
+  Finally, for each link that has a tooltip attachment, the following steps, if enabled or not completed early, happen 
+  when the user mouses over the link:
+      1. Possibly show a loading tooltip now. See $wgLoadingTooltip.
+      2. Late target redirect follow. See $wgLateTargetRedirectFollow.
+      3. Late category filtering. See $wgLateLateCategoryFiltering.
+      4. Late page title parse. See $wgLatePageTitleParse and $wgtoAssumeNonemptyPageTitle.
+      5. Late exists check. See $wgLateExistsCheck.
+      6. Possibly show a loading tooltip now if not up already. See $wgLoadingTooltip and $wgAllowTwoRequestProcess.
+      7. Actually load the tooltip. See $wgMissingPageTooltip and $wgEmptyPageNameTooltip for alternatives when there's
+         no tooltip to load.
+
+Settings below are listed in the order in which they become relevant to the above process.
+
+
+  $wgtoEnableInNamespaces --
+       This defines what namespaces tooltips are actually displayed in. When viewing pages in namespaces where this
+       is set to false, no internal links on the page will display tooltips.
+
+       DEFAULT
+       ========
+       $wgtoEnableInNamespaces = Array( NS_MAIN => true,
+                                        NS_TALK => false,
+                                        NS_USER => true,
+                                        NS_USER_TALK => false,
+                                        NS_PROJECT => true,
+                                        NS_PROJECT_TALK => false,
+                                        NS_IMAGE => false,
+                                        NS_IMAGE_TALK => false,
+                                        NS_MEDIAWIKI => false,
+                                        NS_MEDIAWIKI_TALK => false,
+                                        NS_TEMPLATE => false,
+                                        NS_TEMPLATE_TALK => false,
+                                        NS_HELP => false,
+                                        NS_HELP_TALK => false,
+                                        NS_CATEGORY => true,
+                                        NS_CATEGORY_TALK => false,
+                                      );
+       ========
+
+
+  $wgtoPreprocessCategoryFilter --
+       This defines how TippingOver should perform early category filtering if it is enabled in 
+       $wgtoEarlyCategoryFiltering. This setting is just for performance tweaking and can likely be left alone if the
+       wiki doesn't appear to be suffering from performance issues.
+ 
+       Valid values are:
+
+       true: This pre-fetches the page IDs within the relevant category and all of its subcategories and performs 
+           the filtering while the page is loading. This allows category filtering to then be done with a very quick
+           lookup as each link is processed. The downside is that it must fetch all page ids from the relevant category 
+           hierarchy, so if it's complex or has a huge number of pages, this could be an unnecessary performance hit on
+           the wiki. But in most cases, it's probably more performant than the alternative.
+
+       false: This performs the category filtering while the page is loading as each link is processed. It
+           must check the database for every new page it encounters, though, which may noticeably slow down the
+           loading of link-heavy pages, but may be a better option if the relevant categories have complex hierarchies
+           or a large number of pages since this doesn't require fetching all of the page ids from the categories.
+
+       If both options seem to be dragging down the wiki, consider disabling $wgtoEarlyCategoryFiltering and check out
+       $wgtoLateCategoryFiltering instead.
+
+       DEFAULT
+       ========
+       $wgtoPreprocessCategoryFilter = true;
+       ========
+
+
+ $wgtoEnableOnImageLinks --
+       This defines whether or not tooltips are enabled on image links. In most cases, this refers to links that
+       would be created by something like [[File:Example.jpg|link=Example]]. It can even be possible, in certain
+       configurations, for the images themselves to have tooltips, so even a link like [[File:Example.jpg]] could
+       potentially show a tooltip if this is enabled.
+ 
+       Valid values are:
+ 
+       true : Tooltips are enabled on image links, so if an image links to a page with a valid tooltip, it will show 
+           up when hovering over the image.
+ 
+       false : Tooltips are disabled on images links and won't show up even if the image links to a page with a valid
+           tooltip.
+          
+       DEFAULT
+       ========
+       $wgtoEnableOnImageLinks = true;
+       ========
+
+
+  $wgtoNamespacesWithTooltips --
+       This defines which internal links to which namespaces will have tooltips enabled  Links to pages in
+       namespaces where this is set to false, or which do not appear in the array, will not have tooltips displayed.
+
+       DEFAULT
+       ========
+       $wgtoNamespacesWithTooltips = Array( NS_MAIN => true,
+                                            NS_TALK => false,
+                                            NS_USER => true,
+                                            NS_USER_TALK => false,
+                                            NS_PROJECT => false,
+                                            NS_PROJECT_TALK => false,
+                                            NS_IMAGE => false,
+                                            NS_IMAGE_TALK => false,
+                                            NS_MEDIAWIKI => false,
+                                            NS_MEDIAWIKI_TALK => false,
+                                            NS_TEMPLATE => false,
+                                            NS_TEMPLATE_TALK => false,
+                                            NS_HELP => false,
+                                            NS_HELP_TALK => false,
+                                            NS_CATEGORY => false,
+                                            NS_CATEGORY_TALK => false,
+                                          );
+       ========
+
+
+ $wgtoEarlyTargetRedirectFollow --
+       This defines whether TippingOver follows redirects in link or #tipfor targets before early category filtering
+       and early page title parsing.
+ 
+       Valid values are:
+ 
+       false : The target page will be used for early category filtering and the early page title parse whether it is
+           a redirect or not. This can be expected to run a little, as it skips an extra database check for each link, 
+           though it may only be noticable on link-heavy pages. It also means that if category filtering is going to
+           filter based on the categories that page is in, even if it's a redirect.
+
+           Redirect following can still be done late (see $wgtoLateTargetRedirectFollow), but ONLY if ALL other 
+           subsequent early steps are skipped. In other words, the late redirect follow will apply only to links to
+           which there has been no early category filtering, no early page title parse, and no early exists check.
+           
+       true : If the target page is a redirect, than its destination page is treated as the target page in all 
+           subsequent steps, early or late.
+          
+       DEFAULT
+       ========
+       $wgtoEarlyTargetRedirectFollow = true;
+       ========
+
+
+ $wgtoEarlyCategoryFiltering --
+       This defines if the target page of links should be checked to see if they are in the hierarchy of a 
+       tooltip-enabling or disabling category when the links are generated.
+
+       Valid values are:
+ 
+       false: No category check will be done during link generation, leaving the tooltip "enabled" at least until the 
+           user hovers over the link with the mouse. The value of $wgtoLateCategoryFiltering will determine if category
+           filtering is performed then.
+
+       true: This will check the target page of a link against an enabling or disabling category, which may result in
+           the tooltip of that link being disabled. See $wgtoEnablingCategory and $wgtoDisabling category for how this 
+           works. Also, see $wgtoPreprocessCategoryFilter to change the approach TippingOver uses to make this check.
+          
+       DEFAULT
+       ========
+       $wgtoEarlyCategoryFiltering = false;
+       ========
+
+
+  $wgtoEnablingCategory --
+       Only applies if $wgtoEarlyCategoryFiltering and/or $wgtoLateCategoryFiltering are set to true.
+ 
+       When those settings are applied, a link only gets a tooltip when its target page is in the category defined
+       by this setting or one of its subcategories. The Category: namespace is optional when defining the category
+       in this setting.
+
+       Setting this to null will cause category filtering to use the disabling category in $wgtoDisablingCategory
+       instead. In 0.6.5, only one or the other operates at any given time, but a future version may allow both to
+       function simultaneously.
+          
+       DEFAULT
+       ========
+       $wgtoEnablingCategory = "Has tooltips enabled";
+       ========
+
+
+  $wgtoDisablingCategory --
+       Only applies if $wgtoEarlyCategoryFiltering and/or $wgtoLateCategoryFiltering are set to true and 
+       $wgtoEnablingCategory is set to null.
+ 
+       When those settings are applied, a link will not get a tooltip when its target page is in the category defined
+       by this setting or one of its subcategories. The Category: namespace is optional when defining the category
+       in this setting. But pages outside that category hierarchy do; it functions exactly opposite of
+       $wgtoEnablingCategory.
+
+       In 0.6.5, if there is an enabling category, the disabling category won't be used. In a future version,
+       however, they may be set up to work together as follows: links would have their tooltips disabled if either the
+       target page was in the disabling category hierarchy somewhere or not in the enabling category hierarchy
+       somewhere. In other words, the disabling category will have priority when a target page is in both hierarchies.
+          
+       DEFAULT
+       ========
+       $wgtoDisablingCategory = "Has tooltips disabled";
+       ========
+
+
+  $wgtoEarlyPageTitleParse --
+       This defines if the title of the targets of a page's links should be sent to MediaWiki:To-tooltip-page-name to
+       find the values whenever the page is recached on the server side.
+ 
+       Valid values are:
+ 
+       true : This performs the parse while the page is saved, purged, or otherwise recached on the server, saving some 
+           processing when actually loading tooltips at the expense of adding overhead to page parsing. How much
+           of an impact this will have will depend a lot on the logic in MediaWiki:To-tooltip-page-name. Expensive 
+           processing in that function could present a danger of causing link-heavy pages to time out when the wiki
+           attempts to parse them, but there are tradeoffs to doing the check late.
+ 
+       false : This will not perform the page title parses during page saves, purges, or recache operations. Note that
+           if $wgLatePageTitleParse is also set to false, this effectively disables the extension in its current state.
+           (Some features being considered for future versions would provide options for tooltips that would not require
+           page title parsing to function, but as of 0.6.5, it is still a requirement for all tooltips.)
+
+           Cases where early page title parsing could potentially cause performance issues and timeouts would include
+           MediaWiki:To-tooltip-page-name using expensive functions like #ifexist, Semantic MediaWiki queries,
+           DynamicPageList functions, and Cargo queries. The danger is on link-heavy pages since these add additional
+           database queries to link processing, possibly adding additional database accesses for every link on a page.
+           In such cases, consider setting $wgtoLatePageTitleParse to true and this setting to false, but be see
+           $wgtoLatePageTitleParse for information on the tradeoff involved.
+          
+       DEFAULT
+       ========
+       $wgtoEarlyPageTitleParse = true;
+       ========
+
+
+ $wgtoAssumeNonemptyPageTitle --
+       This determines if TippingOver should assume MediaWiki:To-tooltip-page-name will always return a page name.
+ 
+       Valid values are:
+ 
+       true : This will disable the empty page tooltip defined by $wgEmptyPageNameTooltip even if it set, so no
+           tooltip is shown if MediaWiki:To-tooltip-page-name should return an empty value.
+ 
+           WARNING: As the name suggests, this causes TippingOver to assume MediaWiki:To-tooltip-page-name won't
+           return an empty page name. When $wgtoPageTitleParse to set to TO_RUN_LATE while there is a valid loading
+           tooltip, depending on other configuration settings, the loading tooltip may be displayed just to
+           disappear if MediaWiki:To-tooltip-page-name does return an empty value. Therefore, this setting is 
+           recommended only if MediaWiki:To-tooltip-page-name is guaranteed not to return an empty value.
+           
+           See $wgtoLoadingTooltip for more information.
+ 
+       false : This causes TippingOver to assume MediaWiki:To-tooltip-page-name may return an empty value, and so
+           $wgtoEmptyPageNameTooltip is enabled if valid. Additionally, when late page title parsing (see
+           $wgtoLatePageTitleParse) is performed while there's a valid loading tooltip but no valid empty page tooltip, 
+           the loading tooltip will be automatically disabled unless $wgtoAllowTwoRequestProcess is set to true, which
+           is not generally recommended.
+
+       DEFAULT
+       ========
+       $wgtoAssumeNonemptyPageTitle = false;
+       ========
+
+
+ $wgtoEarlyExistsCheck --
+       This defines whether or not a check is made that the page identified by processing MediaWiki:To-tooltip-page-name
+       exists for the given target page of a link during an early page title parse.
+ 
+       Valid values are:
+ 
+       false : This disables the exists check during early page title parses. This is useful if the logic in 
+           MediaWiki:To-tooltip-page-name is guaranteed to return an empty value if the tooltip page doesn't exist,
+           or it has its own logic for determining the correct default page to use. This option then prevents
+           redundant processing that could slow down page or tooltip loading.
+
+           It may also simply be desirable to delay the check (see $wgtoLateExistsCheck), since it does require a 
+           database access, which can slow down page saves, purges, and other server-side recaches. The effect is
+           only likely to be significant when very link-heavy pages are involved, but in such cases, it does increase
+           the risk of timeouts.
+ 
+           Disabling both this and $wgtoLateExistsCheck can have undesirable results if MediaWiki:To-tooltip-page-name 
+           does return a page that doesn't exist. It may display a red link when hovering over a link, or less 
+           seriously, it may display the loading tooltip only to have it disappear, as this effectively disables 
+           $wgMissingPageTooltip as well.
+ 
+       true : This performs the exists check during page saves, purges, and other recaches, saving a slight bit of 
+           processing when actually loading tooltips at the expense of adding some extra processing for links during 
+           the page load. This requires an early page title parse first for TippingOver to know what page to check,
+           thus setting $wgtoEarlyPageTitleParse to false effectively disables this as well.
+
+       DEFAULT
+       ========
+       $wgtoEarlyExistsCheck = true;
+       ========
+
+
+ $wgtoLoadingTooltip --
+       This defines what page, if any, to use as a loading tooltip. In other words, this is what will be displayed
+       while the actual tooltip for the page is being requested from the server. To disable loading tooltips 
+       completely, set this to null. The loading tooltip is displayed while waiting for the server to return the 
+       requested tooltip after a user hovers over a link.
+ 
+       This can also be disabled by blanking or deleting the page in question, though this is slightly less 
+       efficient as there is more overhead involved in checking that, but it does allow it to be enabled more easily
+       later on.
+
+       IMPORTANT NOTE: In some situations, the loading tooltip may be automatically disabled. This occurs in some cases
+           when various early checks are disabled, leaving TippingOver in a situation where it doesn't yet know whether
+           there is a tooltip to show. Rather than show a loading tooltip and then nothing, it just tries to load the
+           tooltip instead. This behavior can be changed by setting $wgAllowTwoRequestProcess to true, but this isn't
+           recommended. See $wgAllowTwoRequestProcess below for more information.
+          
+       DEFAULT
+       ========
+       $wgtoLoadingTooltip = "MediaWiki:To-loading-tooltip";
+       ========
+
+
+ $wgtoLateTargetRedirectFollow --
+       This defines whether TippingOver follows redirects in link or #tipfor targets when the user mouses over a link
+       with the tooltip attached.
+
+       IMPORTANT NOTE: This only applies to links to which no early target redirect following, no early category 
+           filtering, no early page title parse, and no early exists check has been applied. Any of those steps being
+           completed on a link causes this step to be bypassed for that link, regardless of the setting.
+ 
+       Valid values are:
+ 
+       false : This setting means that the late category filter check and page title parse will operate on the exact 
+           page specified as a link or #tipfor target, even if it's a redirect.
+           
+       true : If the target page is a redirect, then the destination page will be the target used for late category 
+           filtering, page title parsing, and exists checks.
+          
+       DEFAULT
+       ========
+       $wgtoLateTargetRedirectFollow = true;
+       ========
+
+
+  $wgtoLateCategoryFiltering --
+       This defines if the target page of links should be checked to see if they are in the hierarchy of a 
+       tooltip-enabling or disabling category when the user hovers over the links.
+ 
+       Valid values are:
+ 
+       false: No category check will be done when the user hovers their mouse over the link, even if no check had been
+           performed earlier. Thus category filtering is completely disabled if both $wgtoEarlyCategoryFiltering and
+           this setting are false.
+ 
+       true: Assuming it hasn't been done already (see $wgtoEarlyCategoryFiltering), this will check the target page of 
+           a link against an enabling or disabling category, which may result in the tooltip of that link being 
+           disabled. See $wgtoEnablingCategory and $wgtoDisablingCategory for how this works.
+
+           This can increase wiki performance since the category checks are only performed as needed, but see 
+           $wgtoLoadingTooltip for information on a potential drawback to this lazy checking.
+
+           It may also increase the number of requests TippingOver sends to the server since it may do so when the user
+           hovers over links where the tooltip should be disabled anyway. This is probably not a significant concern,
+           but regardless, early category filtering has a mild advantage in this respect.
+
+           Early and late category filtering can be enabled at the same time. In 0.6.5, this will prevent late
+           category checks from happening at all since TippingOver does not repeat the process when an early check has
+           already been performed. Potential upcoming features may create cases where only some of the links get an
+           early check, so if early category checking is used, it is normally best to leave this set to true. An
+           exception may apply when opting to set $wgtoAllowTwoRequestProcess to true instead of the default false,
+           which is not generally recommended.
+          
+       DEFAULT
+       ========
+       $wgLateCategoryFiltering = false;
+       ========
+ 
+
+   $wgtoLatePageTitleParse --
+       This defines if the title of the targets of a page's links should be sent to MediaWiki:To-tooltip-page-name in
+       a request send when the user hovers their mouse over links.
+ 
+       Valid values are:
+ 
+       true : This performs the parse after the user movses over a link during the actual tooltip load, assuming this
+           hasn't already been done as described above for $wgtoEarlyPageTitleParse. See $wgtoLoadingTooltip for some
+           potential issues to watch out for in these delayed parses, however.
+
+           As of 0.6.5, when $wgtoEarlyPageTitleParse is set to true, there shouldn't be any links which haven't
+           received a page title parse. But unless late parsing may result in issues described in the description of 
+           $wgtoLoadingTooltip above, it is recommended to leave this set to true anyway. Potential upcoming features
+           may permit situations where having both options enabled would be useful.
+ 
+       false : This will not perform the page title parses when hovering over links even if it wasn't done in an early
+           parse. As of 0.6.5, setting $wgtoEarlyPageTitleParse to false as well will result in page title parsing being
+           effectively disabled, which effectively disables the extension.
+
+       DEFAULT
+       ========
+       $wgtoLatePageTitleParse = true;
+       ========
+
+
+  $wgtoLateExistsCheck --
+       This defines whether or not a check is made that the page identified by processing MediaWiki:To-tooltip-page-name
+       exists for the given target page of a link during an late page title parse triggered by the user hovering their
+       mouse over a link.
+ 
+       Valid values are:
+ 
+       false : This disables the exists check during late page title parsing. As with $wgEarlyExistsCheck, this may be
+           desirable if the logic in MediaWiki:To-tooltip-page-name cannot return a title for a page that doesn't exist,
+           thus preventing a redundant or unnecessary check.
+ 
+           But if $wgtoEarlyExistsCheck is disabled as well, there can be undesirable results if 
+           MediaWiki:To-tooltip-page-name does, in fact, return a page that doesn't exist. It may display a red link 
+           when hovering over a link, or less seriously, it may display the loading tooltip only to have it disappear, 
+           as this effectively disables $wgMissingPageTooltip as well.
+ 
+       true : This performs the exists check after the user movses over a link during the actual tooltip load.
+           This may be a good idea if pages are particularly link heavy and category filtering isn't an option or
+           doesn't significantly reduce the number of links to check.
+
+          
+       DEFAULT
+       ========
+       $wgtoLateExistsCheck = true;
+       ========
+
+ 
+  $wgtoAllowTwoRequestProcess --
+       The "two request process" is where TippingOver makes one request to the server just to determine if there is a
+       tooltip, and then if there is, another request to actually load it.
+
+       If allowed by this setting, TippingOver will only use this process if a loading tooltip exists and any of these
+       configurations are specified:
+           * $wgtoEarlyPageTitleParse is false and $wgtoLatePageTitleParse is true with no valid empty page name 
+             tooltip unless $wgAssumeNonemptyPageTitle is set to true (but see risks with that setting),
+           * $wgtoEarlyPageTitleParse is false and $wgtoLatePageTitleParse is true with no valid missing page tooltip
+             unless $wgtoEarlyExistsCheck and $wgtoLateExistsCheck are both false (but see risks with that situation), 
+           * $wgtoEarlyExistsCheck is false and $wgtoLateExistsCheck is true with no valid missing page tooltip, or
+           * $wgtoEarlyCategoryFiltering is false and $wgtoLateCategoryFiltering is true under any circumstance.
+ 
+       When disallowed, TippingOver quietly and automatically disables the loading tooltip instead and just proceeds
+       with a single request to fully load the tooltip (or quietly stop if there's nothing to show).
+
+       Disallowing the two request process is default, as permitting it is not recommended. It takes approximately
+       twice as long to load a tooltip this way, and showing the loading tooltip is delayed because TippingOver will
+       wait for the response to the first request so it doesn't show the loading tooltip when there will be no tooltip
+       to show. (The single exception is explained with the $wgtoAssumeNonemptyPageTitle setting description.) But if
+       showing a loading tooltip is strongly desired even in the above configurations, this process is available.
+
+       Valid values are:
+
+       false: Don't allow the two request process and disable the loading tooltip if necessary to avoid it.
+
+       true: Allow the two request process, leaving the loading tooltip enabled in all configurations if it exists.
+
+
+       DEFAULT
+       ========
+       $wgtoAllowTwoRequestProcess = false;
+       ========
+
+
+  $wgtoMissingPageTooltip --
+       This defines what page, if any, to use as a tooltip if the page identified by processing 
+       MediaWiki:To-tooltip-page-name doesn't exist. To disable this entirely, set this to null.
+ 
+       This can also be disabled by blanking or deleting the page in question, though this is slightly less 
+       efficient as there is more overhead involved in checking that, but it does allow it to be enabled more easily
+       later on.
+ 
+       WARNING: See warning under $wgtoLoadingTooltip below before disabling this in any way.
+          
+       DEFAULT
+       ========
+       $wgtoMissingPageTooltip = "MediaWiki:To-missing-page-tooltip";
+       ========
+
+
+ $wgtoEmptyPageNameTooltip --
+       This defines what page, if any, to use as a tooltip if processing MediaWiki:To-tooltip-page-name results in an
+       empty value being returned. To disable this entirely, set this to null.
+ 
+       This can also be disabled by blanking or deleting the page in question, though this is slightly less 
+       efficient as there is more overhead involved in checking that, but it does allow it to be enabled more easily
+       later on.
+ 
+       WARNING: See warning under $wgtoLoadingTooltip below before disabling this in any way.
+          
+       DEFAULT
+       ========
+       $wgtoEmptyPageNameTooltip = "MediaWiki:To-empty-page-name-tooltip";
+       ========
+
+
+
+================================================================
+== UPDATING TIPPINGOVER CONFIGURATION FROM PRE-0.6.5 VERSIONS ==
+================================================================
+
+In 0.6.5, there were a number of changes to how certain settings of TippingOver are applied. While the deprecated
+settings listed below will still function, TippingOver will complain with notices in MediaWiki and PHP error logs.
+Updating the settings at one's earliest convenience is highly recommended, for support for the older settings will
+likely be removed in a future version.
+
+  $wgtoPageTitleParse -- DEPRECATED in 0.6.5
+      To support potential upcoming features, it is now possible to enable and disable both early and late page title
+      parsing rather than merely using one or the other.
+
+      ========
+      $wgtoPageTitleParse = TO_RUN_EARLY;
+
+      -- should be replaced with --
+
+      $wgtoEarlyPageTitleParse = true;
+
+      See $wgtoLatePageTitleParse above for information on enabling that simultaneously with early page title parsing.
+      ========
+
+      ========
+      $wgtoPageTitleParse = TO_RUN_LATE;
+
+      -- should be converted to --
+
+      $wgtoEarlyPageTitleParse = false;
+      $wgtoLatePageTitleParse = true;
+      ========
+
+
+
+  $wgtoFollowTargetRedirects -- DEPRECATED in 0.6.5 
+      Early and late target redirect following can now be enabled separately. And late redirect following is now
+      actually implemented.
+
+      ========
+      $wgtoFollowTargetRedirects = TO_DISABLE;
+
+      -- should be replaced with --
+
+      $wgtoEarlyTargetRedirectFollow = false;
+      $wgtoLateTargetRedirectFollow = false;
+      ========
+
+      ========
+      $wgtoFollowTargetRedirects = TO_RUN_EARLY;
+
+      -- should be replaced with --
+
+      $wgtoEarlyTargetRedirectFollow = true;
+      $wgtoLateTargetRedirectFollow = true;
+      ========
+
+      ========
+      $wgtoFollowTargetRedirects = TO_RUN_LATE;
+
+      -- should be replaced with --
+
+      $wgtoEarlyTargetRedirectFollow = false;
+      $wgtoLateTargetRedirectFollow = true;
+      ========
+
+
+
+  $wgtoExistsCheck -- DEPRECATED in 0.6.5
+      The page existence check can now be enabled separately for early and late processing.
+
+      ========
+      $wgtoExistsCheck = TO_DISABLE;
+
+      -- should be replaced with --
+
+      $wgtoEarlyExistsCheck = false;
+      $wgtoLateExistsCheck = false;
+      ========
+
+      ========
+      $wgtoExistsCheck = TO_RUN_EARLY;
+
+      -- should be replaced with --
+
+      $wgtoEarlyExistsCheck = true;
+      
+      See $wgtoLateExistsCheck above for information on enabling that simultaneously with early page title parsing.
+      ========
+
+      ========
+      $wgtoExistsCheck = TO_RUN_LATE;
+
+      -- should be replaced with --
+
+      $wgtoEarlyExistsCheck = false;
+      $wgtoLateExistsCheck = true;
+      ========
+
+
+
+  $wgtoCategoryFiltering -- DEPRECATED in 0.6.5
+      Category filtering can now be enabled separately for early and late processing.
+
+      ========
+      $wgtoCategoryFiltering = TO_DISABLE;
+
+      -- should be replaced with --
+
+      $wgtoEarlyCategoryFiltering = false;
+      $wgtoLateCategoryFiltering = false;
+      ========
+
+      ========
+      $wgtoCategoryFiltering = TO_PREINDEX;
+
+      -- should be replaced with --
+
+      $wgtoEarlyCategoryFiltering = true;
+      $wgtoPreprocessCategoryFilter = true;
+      
+      See $wgtoLateCategoryFiltering above for information on enabling that simultaneously with the early category
+      filter.
+      ========
+
+      ========
+      $wgtoCategoryFiltering = TO_RUN_EARLY;
+
+      -- should be replaced with --
+
+      $wgtoEarlyCategoryFiltering = true;
+      $wgtoPreprocessCategoryFilter = false;
+      
+      See $wgtoLateCategoryFiltering above for information on enabling that simultaneously with the early category
+      filter.
+      ========
+
+      ========
+      $wgtoCategoryFiltering = TO_RUN_LATE;
+
+      -- should be replaced with --
+
+      $wgtoEarlyCategoryFiltering = false;
+      $wgtoLateCategoryFiltering = true;
+      ========

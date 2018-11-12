@@ -11,7 +11,6 @@
  */
 
 class APIQueryTooltip extends APIBase {
-  
   /**
    * Holds the parser options
    * @var ParserOptions
@@ -19,12 +18,19 @@ class APIQueryTooltip extends APIBase {
   private $mParserOptions = null;
   
   /**
+   * Holds the TippingOver configuration.
+   * @var TippingOverConfiguration
+   */
+  private $mConf = null;
+  
+  /**
    * Initializes a ParserOptions instance.
    */
   private function initializeParserOptions() {
     if ( $this->mParserOptions === null ) {
-      $this->mParserOptions = new ParserOptions;
+      $this->mParserOptions = new ParserOptions();
       $this->mParserOptions->setEditSection( false );
+      $this->mParserOptions->setWrapOutputClass( null );
     }
   }
   
@@ -35,11 +41,12 @@ class APIQueryTooltip extends APIBase {
    */
   private function getOptions() {
     $optionValues = Array();
-    $optionKeywords = Array( "exists", "title", "image", "cat", "text" );
+    $optionKeywords = Array( "follow", "exists", "title", "image", "cat", "text" );
     if ( isset( $this->params['options'] ) ) {
       $optionValues = $this->parseMultiValue( 'options', $this->params['options'], true, $optionKeywords );
     }
     $options = Array();
+    $options['follow'] = in_array( "follow", $optionValues );
     $options['exists'] = in_array( "exists", $optionValues );
     $options['title'] = in_array( "title", $optionValues );
     $options['image'] = in_array( "image", $optionValues );
@@ -53,7 +60,7 @@ class APIQueryTooltip extends APIBase {
   }
   
   /**
-   * This function gets the tooltip title in string form. If it's available directy from the tooltip param supplied
+   * This function gets the tooltip title in string form. If it's available directly from the tooltip param supplied
    * in the request, it returns that. Otherwise, it will use MediaWiki:To-tooltip-page-title to try to transform
    * the title supplied in the target parameter, but only if the options specified actually require knowing the
    * tooltip page title; otherwise, it skips that step and returns null. It also returns null if the target title
@@ -67,17 +74,22 @@ class APIQueryTooltip extends APIBase {
     }
     if ( $options['exists'] || $options['image'] || $options['text'] || $options['title'] ) {
       if ( isset( $this->params['target'] ) ) {
-        $targetTitle = Title::newFromText( $this->params['target'] );
+        $directTargetTitle = $targetTitle = Title::newFromText( $this->params['target'] );
+        if ( $options['follow'] ) {
+          $targetTitle = WikiTooltipsCore::followRedirect( $targetTitle );
+        }
         if ( $targetTitle !== null ) {
           // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute.
           // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
           $tooltipTitleCode = wfMessage( 'to-tooltip-page-name' )->inContentLanguage()
-                                                                 ->params( $targetTitle->getPrefixedText() )
+                                                                 ->params( $targetTitle->getPrefixedText(),
+                                                                           $targetTitle->getFragment(),
+                                                                           $directTargetTitle->getPrefixedText(),
+                                                                           $directTargetTitle->getFragment()
+                                                                         )
                                                                  ->plain();
-          return Parser::stripOuterParagraph( $this->parse( $tooltipTitleCode, 
-                                                            Title::newFromText( 'MediaWiki:To-tooltip-page-name' ) 
-                                                          ) 
-                                            );
+          $tooltipTitleText = $this->parse( $tooltipTitleCode, Title::newFromText( 'MediaWiki:To-tooltip-page-name' ) );
+          return WikiTooltipsCore::stripOuterTags( $tooltipTitleText );
         } else {
           return null;
         }
@@ -94,13 +106,7 @@ class APIQueryTooltip extends APIBase {
    * @return string The tooltip content parsed to HTML.
    */
   private function parseTooltip( $tooltipTitle, $targetTitle ) {
-    $tooltips = WikiTooltips::getInstance();
-    
-    $tooltips->beforeTooltipContentParse();
-    $output = $this->parse( WikiTooltips::getTooltipWikiText( $tooltipTitle ), $targetTitle );
-    $tooltips->afterTooltipContentParse();
-    
-    return $output;
+    return $this->parse( WikiTooltipsCore::getTooltipWikiText( $tooltipTitle ), $targetTitle );
   }
   
   /**
@@ -122,26 +128,24 @@ class APIQueryTooltip extends APIBase {
    * @param Array $options The array of options from the getOptions function.
    */
   private function addResults( $options ) {
-    global $wgtoCategoryFiltering, $wgtoCategoryFilterMode;
-    
     $result = $this->getResult();
     
     $targetTitle = Title::newFromText( $this->params['target'] );
     if ( $options['cat'] ) {
-      if ( $wgtoCategoryFiltering !== TO_DISABLE ) {
+      if ( $this->mConf->lateCategoryFiltering() ) {
         if ( $targetTitle !== null ) {
-          $category = WikiTooltips::getFilterCategoryTitle()->getText();
+          $category = WikiTooltipsCore::getFilterCategoryTitle( $this->mConf )->getText();
           $finder = new CategoryFinder;
           $finder->seed( Array( $targetTitle->getArticleID() ), Array( $category ) );
           if ( count( $finder->run() ) === 1 ) {
             $result->addValue( null, 
                                'passesCategoryFilter', 
-                               ($wgtoCategoryFilterMode === TO_ENABLING) ? 'true' : 'false'
+                               ($this->mConf->enablingCategory() !== null) ? 'true' : 'false'
                              );
           } else {
             $result->addValue( null, 
                                'passesCategoryFilter', 
-                               ($wgtoCategoryFilterMode === TO_DISABLING) ? 'true' : 'false'
+                               ($this->mConf->enablingCategory() === null) ? 'true' : 'false'
                              );
           }
         } else {
@@ -186,10 +190,12 @@ class APIQueryTooltip extends APIBase {
    * Executes the API request for given tooltip content.
    */
   public function execute( ) {
+    $this->mConf = new TippingOverConfiguration();
     $this->params = $this->extractRequestParams();
     $this->requireAtLeastOneParameter( $this->params, 'target', 'tooltip' );
     
     $this->initializeParserOptions();
+    WikiTooltipsCore::flagTooltipAttachmentUnsafe();
     
     $this->addResults( $this->getOptions() );
     
@@ -223,6 +229,7 @@ class APIQueryTooltip extends APIBase {
                   'options' => Array( 'An pipe-separated list containing one or more of the following: ',
                                       '"text": returns the parsed tooltip output to show in "text" unless ',
                                       'any verification requested in other options fails; ',
+                                      '"follow": if target is redirect, use destination page as target instead; ',
                                       '"title": returns the title of the tooltip page in "tooltipTitle"; ',
                                       '"image": indicates whether the tooltip page is from the File namespace in ', 
                                       '"isImage" ',
@@ -250,6 +257,6 @@ class APIQueryTooltip extends APIBase {
    * @return string A version string.
    */
   public function getVersion( ) {
-    return __CLASS__ . ': TippingOver 0.64';
+    return __CLASS__ . ': TippingOver 0.6.5';
   }
 }
