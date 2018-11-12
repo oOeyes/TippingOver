@@ -147,7 +147,7 @@ class WikiTooltips {
       self::$mTooltipsEnabledHere = true;
       $wgHooks['MakeGlobalVariablesScript'][] = Array( 'WikiTooltips::registerParsedConfigVarsForScriptExport' );
       $wgHooks['LinkEnd'][] = Array( 'WikiTooltips::linkTooltipRender' );
-      if ( self::$mConf->enableOnImageLinks ) {
+      if ( self::$mConf->enableOnImageLinks() ) {
         $wgHooks['ImageBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipStartRender' );
         $wgHooks['ThumbnailBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipFinishRender' );
       }
