@@ -63,7 +63,9 @@
     "LatePageTitleParse": false,
     "LateExistsCheck": true,
     "MissingPageTooltip": "MediaWiki:To-missing-page-tooltip",
-    "EmptyPageNameTooltip": "MediaWiki:To-empty-page-name-tooltip"
+    "EmptyPageNameTooltip": "MediaWiki:To-empty-page-name-tooltip",
+    "AllowMissingPageTooltip": true,
+    "AllowEmptyPageNameTooltip": true
   },
 	"Hooks": {
     "BeforeInitialize" : [

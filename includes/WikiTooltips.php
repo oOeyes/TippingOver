@@ -522,6 +522,11 @@ class WikiTooltips {
    * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
    */
   private static function setUpAttribs( $setupInfo, &$attribs ) {
+    global $wgAllowEmptyPageNameTooltip;
+    global $wgAllowMissingPageTooltip;
+    if ( ( $setupInfo['emptyPageName'] && ! $wgAllowEmptyPageNameTooltip ) || ( $setupInfo['missingPage'] && ! $wgAllowMissingPageTooltip ) ) {
+      return;
+    }
     $tooltipId = self::encodeAllSpecial( $setupInfo['targetTitle']->getPrefixedText() );
     if ( array_key_exists( 'class', $attribs ) ) {
       $attribs['class'] .= ' to_hasTooltip';
@@ -539,10 +544,10 @@ class WikiTooltips {
     if ( array_key_exists( 'isImage', $setupInfo ) ) {
       $attribs['data-to-is-image'] = $setupInfo['isImage'] ? 'true' : 'false';
     }
-    if ( array_key_exists( 'emptyPageName', $setupInfo ) ) {
+    if ( array_key_exists( 'emptyPageName', $setupInfo ) && $wgAllowEmptyPageNameTooltip ) {
       $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
-    } 
-    if ( array_key_exists( 'missingPage', $setupInfo ) ) {
+    }
+    if ( array_key_exists( 'missingPage', $setupInfo ) && $wgAllowMissingPageTooltip ) {
       $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
     }
   }
