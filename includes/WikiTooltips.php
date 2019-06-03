@@ -533,7 +533,6 @@ class WikiTooltips {
       $attribs['data-to-direct-target-title'] = $setupInfo['directTargetTitle']->getFullText();
     }
     $attribs['data-to-target-title'] = $setupInfo['targetTitle']->getFullText();
-    $attribs['data-to-can-late-follow'] = $setupInfo['canLateFollow'] ? 'true' : 'false';
     if ( $setupInfo['tooltipTitle'] !== null ) {
       $attribs['data-to-tooltip-title'] = $setupInfo['tooltipTitle'];
     }
