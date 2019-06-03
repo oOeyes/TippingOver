@@ -524,6 +524,7 @@ class WikiTooltips {
   private static function setUpAttribs( $setupInfo, &$attribs ) {
     global $wgAllowEmptyPageNameTooltip;
     global $wgAllowMissingPageTooltip;
+    global $wgLateTargetRedirectFollow;
     if ( ( $setupInfo['emptyPageName'] && ! $wgAllowEmptyPageNameTooltip ) || ( $setupInfo['missingPage'] && ! $wgAllowMissingPageTooltip ) ) {
       return;
     }
@@ -538,16 +539,19 @@ class WikiTooltips {
       $attribs['data-to-direct-target-title'] = $setupInfo['directTargetTitle']->getFullText();
     }
     $attribs['data-to-target-title'] = $setupInfo['targetTitle']->getFullText();
+    if ( $setupInfo['canLateFollow'] && $wgLateTargetRedirectFollow ) {
+      $attribs['data-to-can-late-follow'] = $setupInfo['canLateFollow'] ? 'true' : 'false';
+    }
     if ( $setupInfo['tooltipTitle'] !== null ) {
       $attribs['data-to-tooltip-title'] = $setupInfo['tooltipTitle'];
     }
-    if ( array_key_exists( 'isImage', $setupInfo ) ) {
+    if ( array_key_exists( 'isImage', $setupInfo ) && $setupInfo['isImage'] ) {
       $attribs['data-to-is-image'] = $setupInfo['isImage'] ? 'true' : 'false';
     }
     if ( array_key_exists( 'emptyPageName', $setupInfo ) && $wgAllowEmptyPageNameTooltip ) {
       $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
     }
-    if ( array_key_exists( 'missingPage', $setupInfo ) && $wgAllowMissingPageTooltip ) {
+    if ( array_key_exists( 'missingPage', $setupInfo ) && $wgAllowMissingPageTooltips ) {
       $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
     }
   }
