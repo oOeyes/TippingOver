@@ -551,7 +551,7 @@ class WikiTooltips {
     if ( array_key_exists( 'emptyPageName', $setupInfo ) && $wgAllowEmptyPageNameTooltip ) {
       $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
     }
-    if ( array_key_exists( 'missingPage', $setupInfo ) && $wgAllowMissingPageTooltips ) {
+    if ( array_key_exists( 'missingPage', $setupInfo ) && $wgAllowMissingPageTooltip ) {
       $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
     }
   }
