@@ -3,8 +3,8 @@
   "namemsg": "tippingover-extensionname",
 	"type": "other",
 	"author": "[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]",
-  "version": "0.6.5",
-	"url": "http://sw.aeongarden.com/wiki/TippingOver",
+  "version": "0.6.6",
+	"url": "http://github.com/oOeyes/TippingOver",
   "descriptionmsg": "tippingover-desc",
 	"license-name": "GPL-2.0+",
   "config": {

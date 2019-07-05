@@ -92,7 +92,7 @@ var toWikiTooltips = toWikiTooltips || {
    * @param {jQuery} link The link to setup tooltip and preload boxes for.
    */
   createTooltipAndPreloadElement : function( link ) {
-    var linkData = link.data();
+    var linkData = toWikiTooltips.expandDataAttributes( link );
     
     if ( $( '#' + toWikiTooltips.tooltipClassPrefix + linkData.toId ).length === 0 ) {
       var tooltipBox = $( '<div />');
@@ -120,6 +120,7 @@ var toWikiTooltips = toWikiTooltips || {
       if ( "toEmptyPageName" in linkData ) {
         tooltipData.toEmptyPageName = linkData.toEmptyPageName;
       }
+      
       $( 'body' ).append( tooltipBox );
 
       if ( !("toIsImage" in linkData) || linkData.toIsImage ) {
@@ -142,6 +143,60 @@ var toWikiTooltips = toWikiTooltips || {
         $( 'body' ).append( preloadBox );
       }
     }
+  },
+  
+  /**
+   * Expands the new abbreviated data attributes added in 0.6.6 into the conventional verbose versions and adds them
+   * to the supplied link, returning the updated link data.
+   * @param {jQuery} link The link whose data attributes should be expanded.
+   * @returns {object} The updated link data in object form.
+   */
+  expandDataAttributes : function( link ) {
+    linkData = link.data();
+    
+    if ( "toTitles" in linkData ) {
+      var titles = linkData.toTitles.split( '|' );
+      if ( titles.length === 3 ) {
+        if ( titles[0] !== "" ) {
+          link.data( 'toTargetTitle', titles[0] );
+        }
+        if ( titles[1] !== "" ) {
+          link.data( 'toDirectTargetTitle', titles[1] );
+        }
+        if ( titles[2] !== "" ) {
+          link.data( 'toTooltipTitle', titles[2] );
+        }
+      }
+    }
+    
+    if ( "toFlags" in linkData ) {
+      if ( linkData.toFlags.indexOf( 'f' ) > -1 ) {
+        link.data( 'toCanLateFollow', false );
+      }
+      if ( linkData.toFlags.indexOf( 'F' ) > -1 ) {
+        link.data( 'toCanLateFollow', true );
+      }
+      if ( linkData.toFlags.indexOf( 'i' ) > -1 ) {
+        link.data( 'toIsImage', false );
+      }
+      if ( linkData.toFlags.indexOf( 'I' ) > -1 ) {
+        link.data( 'toIsImage', true );
+      }
+      if ( linkData.toFlags.indexOf( 'm' ) > -1 ) {
+        link.data( 'toMissingPage', false );
+      }
+      if ( linkData.toFlags.indexOf( 'M' ) > -1 ) {
+        link.data( 'toMissingPage', true );
+      }
+      if ( linkData.toFlags.indexOf( 'e' ) > -1 ) {
+        link.data( 'toEmptyPageName', false );
+      }
+      if ( linkData.toFlags.indexOf( 'E' ) > -1 ) {
+        link.data( 'toEmptyPageName', true );
+      }
+    }
+    
+    return link.data();
   },
   
   /**

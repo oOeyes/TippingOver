@@ -420,7 +420,7 @@ class TippingOverConfiguration {
       $this->mDisablingCategory = null; // accpet empty string as valid, but normalize it to null
     }
     
-    if ( $this->mEarlyCategoryFiltering || $this->mLateCategoryFiltering ) {
+    if ( $this->mEarlyCategoryFiltering || $this->mLateCategoryFilter ) {
       if ( $this->enablingCategory() === null && $this->disablingCategory() === null ) {
         $this->mEarlyCategoryFiltering = false;
         $this->mLateCategoryFiltering = false;
@@ -459,9 +459,9 @@ class TippingOverConfiguration {
      * from having them "enabled" in the configuration even if it's currently overridden.
      */
     $this->mLateTargetRedirectFollow = !( $this->mEarlyTargetRedirectFollow ) && $this->mLateTargetRedirectFollow;
-    $this->mLateCategoryFiltering = !( $this->mEarlyCategoryFiltering ) && $this->mLateCategoryFiltering;
+    $this->mLateCategoryFiltering = !( $this->mEarlyCategoryFilter ) && $this->mLateCategoryFiltering;
     $this->mLatePageTitleParse = !( $this->mEarlyPageTitleParse ) && $this->mLatePageTitleParse;
-    $this->mLateExistsCheck = !( $this->mEarlyExistsCheck ) && $this->mLateExistsCheck;
+    $this->mLateExistsCheck = !( $this->mExistsCheck ) && $this->mLateExistsCheck;
     
     if ( $this->mMissingPageTooltip !== null && !( is_string( $this->mMissingPageTooltip ) ) ) {
       $this->mMissingPageTooltip = null;

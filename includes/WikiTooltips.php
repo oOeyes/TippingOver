@@ -147,7 +147,7 @@ class WikiTooltips {
       self::$mTooltipsEnabledHere = true;
       $wgHooks['MakeGlobalVariablesScript'][] = Array( 'WikiTooltips::registerParsedConfigVarsForScriptExport' );
       $wgHooks['LinkEnd'][] = Array( 'WikiTooltips::linkTooltipRender' );
-      if ( self::$mConf->enableOnImageLinks() ) {
+      if ( self::$mConf->enableOnImageLinks ) {
         $wgHooks['ImageBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipStartRender' );
         $wgHooks['ThumbnailBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipFinishRender' );
       }
@@ -528,23 +528,30 @@ class WikiTooltips {
     } else {
       $attribs['class'] = 'to_hasTooltip';
     }
+    $titles = $setupInfo['targetTitle']->getFullText() . "|";
     $attribs['data-to-id'] = $tooltipId;
     if ( !$setupInfo['directTargetTitle']->equals( $setupInfo['targetTitle'] ) ) {
-      $attribs['data-to-direct-target-title'] = $setupInfo['directTargetTitle']->getFullText();
+      $titles .= $setupInfo['directTargetTitle']->getFullText();
     }
-    $attribs['data-to-target-title'] = $setupInfo['targetTitle']->getFullText();
-    $attribs['data-to-can-late-follow'] = $setupInfo['canLateFollow'] ? 'true' : 'false';
+    $titles .= "|";
+    $flags = $setupInfo['canLateFollow'] ? 'F' : 'f';
     if ( $setupInfo['tooltipTitle'] !== null ) {
-      $attribs['data-to-tooltip-title'] = $setupInfo['tooltipTitle'];
+      $titles .= $setupInfo['tooltipTitle'];
     }
     if ( array_key_exists( 'isImage', $setupInfo ) ) {
-      $attribs['data-to-is-image'] = $setupInfo['isImage'] ? 'true' : 'false';
+      $flags .= $setupInfo['isImage'] ? 'I' : 'i';
     }
     if ( array_key_exists( 'emptyPageName', $setupInfo ) ) {
-      $attribs['data-to-empty-page-name'] = $setupInfo['emptyPageName'] ? 'true' : 'false';
+      $flags .= $setupInfo['emptyPageName'] ? 'E' : 'e';
     } 
     if ( array_key_exists( 'missingPage', $setupInfo ) ) {
-      $attribs['data-to-missing-page'] = $setupInfo['missingPage'] ? 'true' : 'false';
+      $flags .= $setupInfo['missingPage'] ? 'M' : 'm';
+    }
+    if ( $titles !== "" ) {
+      $attribs['data-to-titles'] = $titles;
+    }
+    if ( $flags !== "" ) {
+      $attribs['data-to-flags'] = $flags;
     }
   }
   
