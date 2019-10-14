@@ -52,7 +52,7 @@ class APIQueryTooltip extends APIBase {
     $options['image'] = in_array( "image", $optionValues );
     $options['cat'] = in_array( "cat", $optionValues );
     if ( $options['cat'] && !isset( $this->params['target'] ) ) {
-      $this->dieUsage( 'Category filtering cannot be done without the target parameter.', 'no_target_for_cat_filter' );
+      $this->dieWithError( 'Category filtering cannot be done without the target parameter.', 'no_target_for_cat_filter' );
     }
     $options['text'] = in_array( "text", $optionValues );
     
