@@ -214,45 +214,6 @@ class APIQueryTooltip extends APIBase {
   }
   
   /**
-   * Returns a description of the allowed parameters.
-   * @return Array A description of the allowed parameters.
-   */
-  public function getParamDescription( ) {
-    return Array( 'target' => Array( 'The title of the page the link links to. ',
-                                     'Optional unless the "categoryfilter" option is requested or the tooltip page ',
-                                     'name is not supplied.',
-                                   ),
-                  'tooltip' => Array( 'The title of the page to get tooltip content from. ',
-                                      'Optional if the target page name is supplied and completely ignored if the ',
-                                      '"exists" and "text" options are not requsted.'
-                                    ),
-                  'options' => Array( 'An pipe-separated list containing one or more of the following: ',
-                                      '"text": returns the parsed tooltip output to show in "text" unless ',
-                                      'any verification requested in other options fails; ',
-                                      '"follow": if target is redirect, use destination page as target instead; ',
-                                      '"title": returns the title of the tooltip page in "tooltipTitle"; ',
-                                      '"image": indicates whether the tooltip page is from the File namespace in ', 
-                                      '"isImage" ',
-                                      '"exists": verify the page exists first and return this in "exists"; ',
-                                      '"cat": verify the page passes category filter options and return this in ',
-                                      '"passesCategoryFilter".',
-                                    ),
-                );
-  }
-  
-  /**
-   * Returns a description of the module.
-   * @return Array A description of this module.
-   */
-  public function getDescription( ) {
-    return Array( 'Given a target page and/or tooltip page for a link, returns one or more of the following items: ',
-                  'the title of the tooltip page, whether or not it is an image from the File: namespace, whether the ',
-                  'tooltip page exists, whether it passes a category filter check, and/or the rendered content of the ',
-                  'tooltip page itself.'
-                );
-  }
-  
-  /**
    * Returns a version string. Not consistent with other API modules since I'm not yet using SVN.
    * @return string A version string.
    */
