@@ -199,6 +199,7 @@ class APIQueryTooltip extends APIBase {
     
     $this->addResults( $this->getOptions() );
     
+    $this->getMain()->setCacheMaxAge( 300 );
     $this->getMain()->setCacheMode( 'public' );
   }
   

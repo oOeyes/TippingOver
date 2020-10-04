@@ -1,12 +1,12 @@
 {
   "name": "TippingOver",
   "namemsg": "tippingover-extensionname",
-	"type": "other",
-	"author": "[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]",
+  "type": "other",
+  "author": "[http://www.mediawiki.org/wiki/User:OoEyes Shawn Bruckner]",
   "version": "0.6.7",
-	"url": "http://github.com/oOeyes/TippingOver",
+  "url": "http://github.com/oOeyes/TippingOver",
   "descriptionmsg": "tippingover-desc",
-	"license-name": "GPL-2.0+",
+  "license-name": "GPL-2.0+",
   "config": {
     "_prefix": "wgto",
     "EnableInNamespaces" : {
@@ -65,14 +65,14 @@
     "MissingPageTooltip": "MediaWiki:To-missing-page-tooltip",
     "EmptyPageNameTooltip": "MediaWiki:To-empty-page-name-tooltip"
   },
-	"Hooks": {
-    "BeforeInitialize" : [
-      "WikiTooltips::initializeHooksAndModule"
-    ],
-    "ParserFirstCallInit" : [
-      "WikiTooltips::initializeParserHooks"
-    ]
-	},
+  "Hooks": {
+    "BeforeInitialize" : "WikiTooltips::initializeHooksAndModule",
+    "ParserFirstCallInit" : "WikiTooltips::initializeParserHooks",
+    "MakeGlobalVariablesScript": "WikiTooltips::registerParsedConfigVarsForScriptExport",
+    "HtmlPageLinkRendererEnd": "WikiTooltips::linkTooltipRender",
+    "ImageBeforeProduceHTML": "WikiTooltips::imageLinkTooltipStartRender",
+    "ThumbnailBeforeProduceHTML": "WikiTooltips::imageLinkTooltipFinishRender"
+  },
   "ResourceModules": {
     "ext.TippingOver.wikiTooltips": {
       "position": "top",
@@ -99,6 +99,6 @@
     "WikiTooltipsCore": "includes/WikiTooltipsCore.php",
     "ApiQueryTooltip": "includes/ApiQueryTooltip.php"
   },
-	"manifest_version": 1
+  "manifest_version": 1
 }
 
