@@ -1,5 +1,8 @@
 <?php
 
+use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MediaWikiServices;
+
 /**
  * This static class handles most basic tooltip functions that occur during a page load through index.php.
  *
@@ -30,12 +33,6 @@ class WikiTooltips {
    * @var Parser
    */
   private static $mParser = null;
-  
-  /**
-   * Holds the parser options
-   * @var ParserOptions
-   */
-  private static $mParserOptions = null;
   
   /**
    * A sorted array of category members, used for the TO_PREQUERY category filter mode.
@@ -139,23 +136,25 @@ class WikiTooltips {
    * @param MediaWiki $mediawiki The MediaWiki object. Ignored.
    */
   static public function initializeHooksAndModule( &$title, &$article, &$output, &$user, $request, $mediawiki ) {
-    global $wgHooks;
-    
     self::$mConf = new TippingOverConfiguration();
-    
-    if ( self::$mConf->enabled() && self::$mConf->enableInNamespace( $title->getNamespace() ) ) {
+
+    if ( self::enabledForTitle( $title ) ) {
       self::$mTooltipsEnabledHere = true;
-      $wgHooks['MakeGlobalVariablesScript'][] = Array( 'WikiTooltips::registerParsedConfigVarsForScriptExport' );
-      $wgHooks['LinkEnd'][] = Array( 'WikiTooltips::linkTooltipRender' );
-      if ( self::$mConf->enableOnImageLinks() ) {
-        $wgHooks['ImageBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipStartRender' );
-        $wgHooks['ThumbnailBeforeProduceHTML'][] = Array( 'WikiTooltips::imageLinkTooltipFinishRender' );
-      }
-      
       $output->addModules( 'ext.TippingOver.wikiTooltips' );
     }
   }
-  
+
+  /**
+   * Returns true if TippingOver should be included in titles for this namespace.
+   * @param Title|null $title
+   * @return bool
+   */
+  private static function enabledForTitle( ?Title $title ) {
+    return self::$mConf->enabled() && self::$mConf->enableInNamespace(
+      $title ? $title->getNamespace() : NS_SPECIAL
+    );
+  }
+
   /**
    * Calls all parser function registrations functions.
    * @param Parser $parser The parser object being initialized.
@@ -173,6 +172,9 @@ class WikiTooltips {
    * @param OutputPage $out An OutputPage instance. Not used.
    */
   public static function registerParsedConfigVarsForScriptExport( &$vars, $out ) {
+    if ( !self::enabledForTitle( $out->getTitle() ) ) {
+      return;
+    }
     $vars['wgTippingOver']['doLateTargetRedirectFollow'] = self::$mConf->lateTargetRedirectFollow();
     $vars['wgTippingOver']['doLatePageTitleParse'] = self::$mConf->latePageTitleParse();
     $vars['wgTippingOver']['doLateExistsCheck'] = self::$mConf->lateExistsCheck();
@@ -192,7 +194,7 @@ class WikiTooltips {
    * @param string $title The appropriate value of page_name or cl_to for the category in the database.
    */
   private static function populateLookupFromCategory( $title ) {
-    $dbr = wfGetDB( DB_SLAVE );
+    $dbr = wfGetDB( DB_REPLICA );
     
     $result = $dbr->select( Array( 'page', 'categorylinks' ),
                             Array( 'page_id', 'page_namespace', 'page_title' ),
@@ -273,13 +275,13 @@ class WikiTooltips {
         if ( array_key_exists( $id, self::$mCategoryFilterCache ) ) {
           return self::$mCategoryFilterCache[$id];
         } else {
-          $category = self::getFilterCategoryTitle()->getText();
+          $category = WikiTooltipsCore::getFilterCategoryTitle( self::$mConf )->getText();
           $finder = new CategoryFinder;
           $finder->seed( Array( $id ), Array( $category ) );
           if ( count( $finder->run() ) === 1 ) {
             return ( self::$mCategoryFilterCache[$id] = ( self::$mConf->enablingCategory() !== null ) );
           } else {
-            return ( $self::$mCategoryFilterCache[$id] = ( self::$mConf->enablingCategory() === null ) );
+            return ( self::$mCategoryFilterCache[$id] = ( self::$mConf->enablingCategory() === null ) );
           }
         }
       }
@@ -331,11 +333,6 @@ class WikiTooltips {
         self::$mParser = clone $wgParser;
       }
     }
-    
-    if ( self::$mParserOptions === null ) {
-      self::$mParserOptions = new ParserOptions;
-      self::$mParserOptions->setEditSection( false );
-    }
   }
   
   /**
@@ -364,13 +361,14 @@ class WikiTooltips {
     if ( self::$mParser !== null && $titleText !== null && trim( $titleText ) !== '' ) {
       $title = Title::newFromText( $titleText );
       WikiTooltipsCore::flagTooltipAttachmentUnsafe(); // tooltip attaching risks fatal redundant parse here, so disable
-      $out = self::$mParser->parse( WikiTooltipsCore::getTooltipWikiText( $title ), 
-                                    $title, 
-                                    self::$mParserOptions, 
-                                    true 
+      $parserOptions = ParserOptions::newCanonical( 'canonical' );
+      $out = self::$mParser->parse( WikiTooltipsCore::getTooltipWikiText( $title ),
+                                    $title,
+                                    $parserOptions,
+                                    true
                                   );
       WikiTooltipsCore::flagTooltipAttachmentSafe(); // safe again to attach tooltips
-      $html = $out->getText();
+      $html = $out->getText( [ 'enableSectionEditLinks' => false ] );
       $doPreload = ( $title->getNamespace() === NS_FILE );
       if ( trim( $html ) === '' ) {
         $html = null;
@@ -436,16 +434,42 @@ class WikiTooltips {
     
     self::$mIsFullyInitialized = true;
   }
-  
+
+  /**
+   * Return iw:ns:Title for a LinkTarget. Copied from Title::prefix.
+   * @param LinkTarget $target
+   * @return string
+   */
+  private static function getPrefixedLinkTarget( LinkTarget $target ) {
+    $p = '';
+    if ( $target->isExternal() ) {
+      $p = $target->getInterwiki() . ':';
+    }
+
+    $namespace = $target->getNamespace();
+    if ( $namespace != NS_MAIN ) {
+      $lang = MediaWikiServices::getInstance()->getContentLanguage();
+      $nsText = $lang->getNsText( $namespace );
+
+      if ( $nsText === false ) {
+        // See T165149. Awkward, but better than erroneously linking to the main namespace.
+        $nsText = $lang->getNsText( NS_SPECIAL ) . ":Badtitle/NS{$namespace}";
+      }
+
+      $p .= $nsText . ':';
+    }
+    return $p . $target->getText();
+  }
+
   /**
    * This function performs the server-side checks enabled by the current configuration to determine if a given link
    * does not have a tooltip and returns null if not. Otherwise, it returns an array of information needed for both 
    * displaying the tooltip client-side and running any further checks there to see if a tooltip is available for the 
    * link.
-   * @param Title $target The target page of the link or tooltip span.
+   * @param LinkTarget $target The target page of the link or tooltip span.
    * @return Array null if the link should not have a tooltip, or an array of information if it might get one.
    */
-  private static function runEarlyTooltipChecks( $target ) {
+  private static function runEarlyTooltipChecks( LinkTarget $target ) {
     if ( self::$mConf->namespaceWithTooltips( $target->getNamespace() ) ) {
       $setupInfo = Array( 'canLateFollow' => true );
       $setupInfo['directTargetTitle'] = $directTarget = $target;
@@ -464,19 +488,22 @@ class WikiTooltips {
           // For #ask and #show in SMW, the parse can't come through the message cache, so we do this reroute
           // See https://github.com/SemanticMediaWiki/SemanticMediaWiki/issues/1181
           $tooltipTitleWikitext = wfMessage( 'to-tooltip-page-name' )->inContentLanguage()
-                                                                     ->params( $target->getPrefixedText(),
+                                                                     ->params( self::getPrefixedLinkTarget( $target ),
                                                                                $target->getFragment(),
-                                                                               $directTarget->getPrefixedText(),
+                                                                               self::getPrefixedLinkTarget( $directTarget ),
                                                                                $directTarget->getFragment()
                                                                              )
                                                                      ->plain();
           $messageTitle = Title::newFromText( 'MediaWiki:To-tooltip-page-name' );
-          $tooltipTitleParse = self::$mParser->parse( $tooltipTitleWikitext, 
-                                                      $messageTitle, 
-                                                      self::$mParserOptions, 
-                                                      true 
+          $parserOptions = ParserOptions::newCanonical( 'canonical' );
+          $tooltipTitleParse = self::$mParser->parse( $tooltipTitleWikitext,
+                                                      $messageTitle,
+                                                      $parserOptions,
+                                                      true
                                                     );
-          $tooltipTitleText = WikiTooltipsCore::stripOuterTags( $tooltipTitleParse->getText() );
+          $tooltipTitleText = WikiTooltipsCore::stripOuterTags(
+            $tooltipTitleParse->getText( [ 'enableSectionEditLinks' => false ] )
+          );
           if ( trim( $tooltipTitleText ) !== "" ) {
             $tooltipTitle = Title::newFromText( $tooltipTitleText );
             if ( $tooltipTitle !== null ) {
@@ -535,7 +562,7 @@ class WikiTooltips {
     }
     $titles .= "|";
     $flags = $setupInfo['canLateFollow'] ? 'F' : 'f';
-    if ( $setupInfo['tooltipTitle'] !== null ) {
+    if ( !empty( $setupInfo['tooltipTitle'] ) ) {
       $titles .= $setupInfo['tooltipTitle'];
     }
     if ( array_key_exists( 'isImage', $setupInfo ) ) {
@@ -560,7 +587,7 @@ class WikiTooltips {
    * does not have a tooltip and returns false if not. Otherwise, this adds appropriate HTML attributes as name/value 
    * pairs to the second given array, which should either be an empty array or an array of existing HTML attributes that 
    * should be added to the final tag, and also returns true.
-   * @param Title $target The target page of the link or tooltip span.
+   * @param LinkTarget $target The target page of the link or tooltip span.
    * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
    * @return bool True if there is a tooltip and tooltip attribtues have been added.
    */
@@ -583,14 +610,17 @@ class WikiTooltips {
    * Attached to the LinkEnd hook of the MediaWiki linker, this function will add appropriate data elements and other
    * attributes to any link that should have or might have a tooltip, preparing it for the client-side script to
    * finish the job.
-   * @param mixed $dummy Placeholder for removed skin parameter. Not used.
-   * @param Title $target The title of the target page.
-   * @param Array $options An array of link options to get or set.
-   * @param string $html The inner content of the <a> tag.
-   * @param Array $attribs The attributes of the <a> tag and their values.
-   * @param string $ret Alternate HTML to return rather than the <a> tag the linker would generate.
+   * @param LinkRenderer $linkRenderer
+   * @param LinkTarget $target The title of the target page.
+   * @param bool $isKnown boolean indicating whether the page is known or not
+   * @param string &$html The inner content of the <a> tag.
+   * @param Array &$attribs The attributes of the <a> tag and their values.
+   * @param string &$ret Alternate HTML to return rather than the <a> tag the linker would generate.
    */
-  public static function linkTooltipRender( $dummy, $target, $options, &$html, &$attribs, &$ret ) {
+  public static function linkTooltipRender( $linkRenderer, $target, $isKnown, &$html, &$attribs, &$ret ) {
+    if ( !self::$mTooltipsEnabledHere ) {
+      return true;
+    }
     if ( WikiTooltipsCore::isTooltipAttachmentSafe() ) {
       if ( !self::$mIsFullyInitialized ) {
         self::performDelayedInitialization();
@@ -622,6 +652,9 @@ class WikiTooltips {
                                                       &$time, 
                                                       &$res 
                                                    ) {
+    if ( !self::$mTooltipsEnabledHere || !self::$mConf->enableOnImageLinks() ) {
+      return true;
+    }
     if ( WikiTooltipsCore::isTooltipAttachmentSafe() ) {
       if ( !self::$mIsFullyInitialized ) {
         self::performDelayedInitialization();
@@ -666,6 +699,9 @@ class WikiTooltips {
    * @return boolean
    */
   public static function imageLinkTooltipFinishRender( $thumbnail, &$attribs, &$linkAttribs ) {
+    if ( !self::$mTooltipsEnabledHere || !self::$mConf->enableOnImageLinks() ) {
+      return true;
+    }
     if ( array_key_exists( 'class', $attribs ) ) {
       $outClasses = Array();
       $inClasses = explode( ' ', $attribs['class'] );
