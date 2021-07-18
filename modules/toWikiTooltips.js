@@ -683,11 +683,11 @@ var toWikiTooltips = toWikiTooltips || {
       }
       tooltip.css( { 'top' : tooltipTop, 'bottom' : 'auto' } );
     } else {
-      tooltipBottom = bodyY - scrollY - 3;
-      if ( tooltipBottom - tooltip.height() < scrollY ) {
-        tooltipBottom = scrollY + tooltip.height();
+      tooltipTop = bodyY - scrollY - 3 - tooltip.height();
+      if ( tooltipTop < scrollY ) {
+        tooltipTop = scrollY;
       }
-      tooltip.css( { 'bottom' : bodyHeight - tooltipBottom, 'top' : 'auto' } );
+      tooltip.css( { 'top' : tooltipTop, 'bottom' : 'auto' } );
     }
   },
   

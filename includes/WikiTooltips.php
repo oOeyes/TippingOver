@@ -549,7 +549,7 @@ class WikiTooltips {
    * @param Array $attribs An array of HTML attributes with name/value pairs to add tooltip-related attributes to.
    */
   private static function setUpAttribs( $setupInfo, &$attribs ) {
-    $tooltipId = self::encodeAllSpecial( $setupInfo['targetTitle']->getPrefixedText() );
+    $tooltipId = self::encodeAllSpecial( $setupInfo['targetTitle']->getFullText() );
     if ( array_key_exists( 'class', $attribs ) ) {
       $attribs['class'] .= ' to_hasTooltip';
     } else {
